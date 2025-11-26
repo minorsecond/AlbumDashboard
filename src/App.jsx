@@ -22,10 +22,13 @@ const DEFAULT_STAGE_NAMES = [
   "Mix",
 ];
 
-const DEFAULT_SONGS = Array.from({ length: 20 }).map((_, i) => ({
-  id: i + 1,
-  title: `Song ${i + 1}`,
-  stages: DEFAULT_STAGE_NAMES.map((name) => ({ name, value: 0 })),
+/* huge number because some punk albums lots of very short tunes */
+const MAX_SONGS = 35;
+
+const DEFAULT_SONGS = Array.from({ length: MAX_SONGS }).map((_, i) => ({
+    id: i + 1,
+    title: `Song ${i + 1}`,
+    stages: DEFAULT_STAGE_NAMES.map((name) => ({ name, value: 0 })),
 }));
 
 const STORAGE_KEY = "albumProgress_v3";
@@ -508,6 +511,40 @@ export default function App() {
   const [albumTitle, setAlbumTitle] = useState(() => stored.albumTitle || "Album Dashboard");
   const [targetISO, setTargetISO] = useState(() => stored.targetISO || new Date("2026-08-01T00:00:00").toISOString());
 
+  const handleSongCountChange = (raw) => {
+      const requested = Number(raw);
+      if (!Number.isFinite(requested)) return;
+
+      const newCount = Math.min(MAX_SONGS, Math.max(1, requested));
+
+      setSongs((prev) => {
+          const current = prev.length;
+          if (newCount === current) return prev;
+
+          const sorted = [...prev].sort((a, b) => a.id - b.id);
+
+          // If fewer songs: keep only the first N (usually the ones you’re using)
+          if (newCount < current) {
+              return sorted.slice(0, newCount);
+          }
+
+          // If more songs: append fresh blank ones
+          const result = [...sorted];
+          let nextId = sorted.length ? sorted[sorted.length - 1].id + 1 : 1;
+
+          for (let i = current; i < newCount; i += 1) {
+              result.push({
+                  id: nextId,
+                  title: `Song ${nextId}`,
+                  stages: DEFAULT_STAGE_NAMES.map((name) => ({ name, value: 0 })),
+              });
+              nextId += 1;
+          }
+
+          return result;
+      });
+  };
+
   const hash = useHashRoute();
   const songIdFromHash = useMemo(() => {
     if (hash && hash.startsWith("#song/")) {
@@ -563,7 +600,23 @@ export default function App() {
 			  </span>
 			</div>
 
-			<div className="px-4 pb-4 h-[calc(100vh-140px)] overflow-hidden">
+            <div className="px-4 pb-2 flex items-center justify-between text-xs text-neutral-400">
+                <span>Total songs: {songs.length}</span>
+                <label className="flex items-center gap-2">
+                    <span>Show first</span>
+                    <input
+                        type="number"
+                        min={1}
+                        max={MAX_SONGS}
+                        value={songs.length}
+                        onChange={(e) => handleSongCountChange(e.target.value)}
+                        className="w-16 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs"
+                    />
+                    <span>tracks</span>
+                </label>
+            </div>
+
+          <div className="px-4 pb-4 h-[calc(100vh-140px)] overflow-hidden">
 			  <div className="grid grid-cols-5 gap-1 justify-items-center">
 				{songs.map((song) => (
 				  <SongCard
