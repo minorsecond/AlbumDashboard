@@ -11,6 +11,10 @@ import React, { useEffect, useMemo, useState } from "react";
  * - No max stage count; scroll appears inside card if too many
  * - “+” only for Add Bit button
  * - Zoom view centers a single song on a pure black background; UI is the same but enlarged
+ *
+ * Album Progress Dashboard - v4
+ * Changes in this pass:
+ * - Fix some screen size issues
  */
 
 const DEFAULT_STAGE_NAMES = [
@@ -530,7 +534,7 @@ export default function App() {
 	  }, [albumTitle]);
 	  
   return (
-    <div className="min-h-screen w-full bg-neutral-950 text-neutral-100 overflow-x-auto">  
+    <div className="min-h-screen w-full bg-neutral-950 text-neutral-100 overflow-x-auto">
 
       {currentSong ? (
 		  <SongDetail
