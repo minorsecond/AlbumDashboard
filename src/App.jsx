@@ -357,7 +357,7 @@ function SongCard({ song, onUpdate, onZoom }) {
   const addStage = () => onUpdate({ ...song, stages: [...song.stages, { name: `Stage ${song.stages.length + 1}`, value: 0 }] });
 
   return (
-		   <div className="bg-neutral-900 border border-neutral-800 rounded-2xl shadow-sm p-2 flex flex-col gap-2 h-[232px] w-[376px]">
+                   <div className="bg-neutral-900 border border-neutral-800 ... h-[232px] w-full max-w-sm"> 
 		  <div className="flex items-center justify-between gap-2">
 			<EditableText
 			  text={song.title}
@@ -530,8 +530,7 @@ export default function App() {
 	  }, [albumTitle]);
 	  
   return (
-    <div className="h-screen w-full overflow-hidden bg-neutral-950 text-neutral-100">
-      
+    <div className="min-h-screen w-full bg-neutral-950 text-neutral-100 overflow-x-auto">  
 
       {currentSong ? (
 		  <SongDetail
@@ -563,8 +562,8 @@ export default function App() {
 			  </span>
 			</div>
 
-			<div className="px-4 pb-4 h-[calc(100vh-140px)] overflow-hidden">
-			  <div className="grid grid-cols-5 gap-1 justify-items-center">
+			<div className="px-4 pb-4 h-[calc(100vh-140px)] overflow-auto">  
+                          <div className="grid gap-3 justify-items-stretch xl:grid-cols-5 lg:grid-cols-4 md:grid-cols-3 sm:grid-cols-2 grid-cols-1">
 				{songs.map((song) => (
 				  <SongCard
 					key={song.id}
