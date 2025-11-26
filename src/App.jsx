@@ -604,7 +604,7 @@ export default function App() {
 				  textAlign: "center",
 				}}
 			  >
-				{albumAverage(songs)}%
+				{albumAverage(visibleSongs)}%
 			  </span>
 			</div>
             <div className="px-4 pb-2 flex items-center justify-between text-xs text-neutral-400">
