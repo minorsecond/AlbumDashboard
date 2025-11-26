@@ -265,7 +265,7 @@ function eligibleCount(songs, threshold = 75) {
   return [...songs].filter(s => songAverage(s) >= threshold).length;
 }
 
-function Header({ targetISO, setTargetISO, songs, albumTitle, setAlbumTitle }) {
+function Header({ targetISO, setTargetISO, songs, albumTitle, setAlbumTitle, albumSize }) {
   const { days, hours, minutes, seconds } = useCountdown(targetISO);
   const [editingDate, setEditingDate] = useState(false);
 
@@ -279,10 +279,10 @@ function Header({ targetISO, setTargetISO, songs, albumTitle, setAlbumTitle }) {
           placeholder="Album Title"
         />
       </div>
-	  
-	  <div className="text-2xl font-black tracking-wider">
-	  {eligibleCount(songs, 75)}/20
-	  </div>
+
+      <div className="text-2xl font-black tracking-wider">
+          {eligibleCount(songs, 75)}/{albumSize}
+      </div>
 
       <div className="flex items-center gap-3 text-right">
         {editingDate ? (
@@ -509,40 +509,38 @@ export default function App() {
 
   const [songs, setSongs] = useState(() => migrateSongs(stored.songs) || DEFAULT_SONGS);
   const [albumTitle, setAlbumTitle] = useState(() => stored.albumTitle || "Album Dashboard");
-  const [targetISO, setTargetISO] = useState(() => stored.targetISO || new Date("2026-08-01T00:00:00").toISOString());
+  const [targetISO, setTargetISO] = useState(
+      () => stored.targetISO || new Date("2026-08-01T00:00:00").toISOString()
+  );
+
+  // How many tracks are actually on this album (just visibility/logic, not storage)
+  const [songCount, setSongCount] = useState(() => {
+      const saved = Number(stored.songCount);
+      if (Number.isFinite(saved) && saved > 0) {
+          return saved;
+      }
+      if (stored.songs && Array.isArray(stored.songs) && stored.songs.length) {
+          return stored.songs.length;
+      }
+      return DEFAULT_SONGS.length;
+  });
+
+  // Clamp songCount to the current songs length whenever songs change (e.g. import)
+  useEffect(() => {
+      setSongCount((current) => {
+          const max = songs.length || 1;
+          if (!Number.isFinite(current) || current < 1) return 1;
+          if (current > max) return max;
+          return current;
+      });
+  }, [songs.length]);
 
   const handleSongCountChange = (raw) => {
       const requested = Number(raw);
       if (!Number.isFinite(requested)) return;
-
-      const newCount = Math.min(MAX_SONGS, Math.max(1, requested));
-
-      setSongs((prev) => {
-          const current = prev.length;
-          if (newCount === current) return prev;
-
-          const sorted = [...prev].sort((a, b) => a.id - b.id);
-
-          // If fewer songs: keep only the first N (usually the ones you’re using)
-          if (newCount < current) {
-              return sorted.slice(0, newCount);
-          }
-
-          // If more songs: append fresh blank ones
-          const result = [...sorted];
-          let nextId = sorted.length ? sorted[sorted.length - 1].id + 1 : 1;
-
-          for (let i = current; i < newCount; i += 1) {
-              result.push({
-                  id: nextId,
-                  title: `Song ${nextId}`,
-                  stages: DEFAULT_STAGE_NAMES.map((name) => ({ name, value: 0 })),
-              });
-              nextId += 1;
-          }
-
-          return result;
-      });
+      const max = songs.length || 1;
+      const clamped = Math.min(max, Math.max(1, requested));
+      setSongCount(clamped);
   };
 
   const hash = useHashRoute();
@@ -556,9 +554,18 @@ export default function App() {
 
   const currentSong = songIdFromHash ? songs.find((s) => s.id === songIdFromHash) : null;
 
+  // Only the first `songCount` songs are treated as part of the album
+  const visibleSongs = useMemo(
+      () => songs.slice(0, songCount),
+      [songs, songCount]
+  );
+
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ songs, targetISO, albumTitle }));
-  }, [songs, targetISO, albumTitle]);
+      localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ songs, targetISO, albumTitle, songCount })
+      );
+      }, [songs, targetISO, albumTitle, songCount]);
 
   const updateSong = (updated) => setSongs((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
 
@@ -578,17 +585,18 @@ export default function App() {
 		  />
 		) : (
 		  <>
-			<Header
-			  targetISO={targetISO}
-			  setTargetISO={setTargetISO}
-			  songs={songs}
-			  albumTitle={albumTitle}
-			  setAlbumTitle={setAlbumTitle}
-			/>
+              <Header
+                  targetISO={targetISO}
+                  setTargetISO={setTargetISO}
+                  songs={visibleSongs}
+                  albumTitle={albumTitle}
+                  setAlbumTitle={setAlbumTitle}
+                  albumSize={songCount}
+              />
 
 			{/* Album-wide overall progress (with % in center) */}
-			<div className="px-4 -mt-2 pb-2 relative">
-			  <ProgressBar value={albumAverage(songs)} height="h-9" />
+            <div className="px-4 -mt-2 pb-2 relative">
+                <ProgressBar value={albumAverage(visibleSongs)} height="h-9" />
 			  <span
 				className="absolute inset-0 text-white font-bold"
 				style={{
@@ -599,37 +607,35 @@ export default function App() {
 				{albumAverage(songs)}%
 			  </span>
 			</div>
-
             <div className="px-4 pb-2 flex items-center justify-between text-xs text-neutral-400">
-                <span>Total songs: {songs.length}</span>
+                <span>Tracks in album: {songCount}</span>
                 <label className="flex items-center gap-2">
-                    <span>Show first</span>
+                    <span>Album tracks</span>
                     <input
                         type="number"
                         min={1}
-                        max={MAX_SONGS}
-                        value={songs.length}
+                        max={songs.length}
+                        value={songCount}
                         onChange={(e) => handleSongCountChange(e.target.value)}
                         className="w-16 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs"
                     />
-                    <span>tracks</span>
                 </label>
             </div>
 
           <div className="px-4 pb-4 h-[calc(100vh-140px)] overflow-hidden">
-			  <div className="grid grid-cols-5 gap-1 justify-items-center">
-				{songs.map((song) => (
-				  <SongCard
-					key={song.id}
-					song={song}
-					onUpdate={updateSong}
-					onZoom={(id) => (window.location.hash = `#song/${id}`)}
-				  />
-				))}
-			  </div>
-			</div>
-		  </>
-		)}
+              <div className="grid grid-cols-5 gap-1 justify-items-center">
+                  {visibleSongs.map((song) => (
+                      <SongCard
+                          key={song.id}
+                          song={song}
+                          onUpdate={updateSong}
+                          onZoom={(id) => (window.location.hash = `#song/${id}`)}
+                      />
+                  ))}
+              </div>
+          </div>
+          </>
+      )}
     </div>
   );
 }
