@@ -30,9 +30,9 @@ const DEFAULT_STAGE_NAMES = [
 const MAX_SONGS = 35;
 
 const DEFAULT_SONGS = Array.from({ length: MAX_SONGS }).map((_, i) => ({
-    id: i + 1,
-    title: `Song ${i + 1}`,
-    stages: DEFAULT_STAGE_NAMES.map((name) => ({ name, value: 0 })),
+  id: i + 1,
+  title: `Song ${i + 1}`,
+  stages: DEFAULT_STAGE_NAMES.map((name) => ({ name, value: 0 })),
 }));
 
 const STORAGE_KEY = "albumProgress_v3";
@@ -76,7 +76,9 @@ function ProgressBar({ value, editable = false, onClick, height = "h-4", label }
   return (
     <div className="w-full flex items-center gap-2">
       <div
-        className={`relative w-full ${height} bg-neutral-800 rounded-full overflow-hidden ${editable ? "cursor-pointer" : ""}`}
+        className={`relative w-full ${height} bg-neutral-800 rounded-full overflow-hidden ${
+    editable ? "cursor-pointer" : ""
+}`}
         onClick={editable ? onClick : undefined}
         title={editable ? "Click to edit" : undefined}
       >
@@ -97,7 +99,9 @@ function EditableText({ text, onSubmit, className, placeholder }) {
   useEffect(() => setVal(text || ""), [text]);
   return editing ? (
     <input
-      className={`bg-neutral-900 border border-neutral-700 rounded px-2 py-1 w-full focus:outline-none focus:ring ${className || ""}`}
+      className={`bg-neutral-900 border border-neutral-700 rounded px-2 py-1 w-full focus:outline-none focus:ring ${
+    className || ""
+}`}
       value={val}
       placeholder={placeholder}
       onChange={(e) => setVal(e.target.value)}
@@ -137,14 +141,34 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
           />
         </div>
         <div className="space-y-2">
-          <label className="text-sm text-neutral-300">Progress: {clamp01(Number(val) || 0)}%</label>
-          <input type="range" min={0} max={100} value={Number(val) || 0} onChange={(e) => setVal(e.target.value)} className="w-full" />
+          <label className="text-sm text-neutral-300">
+            Progress: {clamp01(Number(val) || 0)}%
+          </label>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Number(val) || 0}
+            onChange={(e) => setVal(e.target.value)}
+            className="w-full"
+          />
         </div>
         <div className="flex gap-2 justify-end">
-          <button className="px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700" onClick={() => onClose(null)}>
+          <button
+            className="px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700"
+            onClick={() => onClose(null)}
+          >
             Cancel
           </button>
-          <button className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500" onClick={() => onClose({ name: name.trim() || initialName, value: clamp01(Number(val) || 0) })}>
+          <button
+            className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500"
+            onClick={() =>
+              onClose({
+                name: name.trim() || initialName,
+                value: clamp01(Number(val) || 0),
+              })
+            }
+          >
             Save
           </button>
         </div>
@@ -155,82 +179,80 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
 
 function ExportImport({ songs, albumTitle }) {
   const exportJSON = async () => {
-	  const data = JSON.stringify({ songs, albumTitle }, null, 2);
+    const data = JSON.stringify({ songs, albumTitle }, null, 2);
 
-	  // If supported (Chromium browsers), let the user pick the exact file to overwrite
-	  if ('showSaveFilePicker' in window) {
-		try {
-		  const handle = await window.showSaveFilePicker({
-			suggestedName: 'album_dashboard.json',
-			types: [
-			  { description: 'JSON', accept: { 'application/json': ['.json'] } },
-			],
-			// You can try to suggest a start folder, but the browser decides:
-			// startIn: 'documents' // or 'desktop' (cannot pre-fill F:\ path)
-		  });
-		  const writable = await handle.createWritable();
-		  await writable.write(new Blob([data], { type: 'application/json' }));
-		  await writable.close();
-		  return;
-		} catch (e) {
-		  if (e?.name === 'AbortError') return; // user canceled
-		  console.error(e);
-		  alert('Could not save using the file picker. Falling back to download.');
-		}
-	  }
+    // If supported (Chromium browsers), let the user pick the exact file to overwrite
+    if ("showSaveFilePicker" in window) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: "album_dashboard.json",
+          types: [
+            { description: "JSON", accept: { "application/json": [".json"] } },
+          ],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(new Blob([data], { type: "application/json" }));
+        await writable.close();
+        return;
+      } catch (e) {
+        if (e?.name === "AbortError") return; // user canceled
+        console.error(e);
+        alert("Could not save using the file picker. Falling back to download.");
+      }
+    }
 
-	  // Fallback: normal download to the browser’s default folder
-	  const blob = new Blob([data], { type: 'application/json' });
-	  const url = URL.createObjectURL(blob);
-	  const a = document.createElement('a');
-	  a.href = url;
-	  a.download = 'album_dashboard.json';
-	  a.click();
-	  URL.revokeObjectURL(url);
-	};
+    // Fallback: normal download to the browser’s default folder
+    const blob = new Blob([data], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "album_dashboard.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
-	const importJSON = async () => {
-	  // If supported, let user pick the file directly
-	  if ('showOpenFilePicker' in window) {
-		try {
-		  const [handle] = await window.showOpenFilePicker({
-			types: [
-			  { description: 'JSON', accept: { 'application/json': ['.json'] } },
-			],
-			multiple: false,
-		  });
-		  const file = await handle.getFile();
-		  const txt = await file.text();
-		  const data = JSON.parse(txt);
-		  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-		  window.location.reload();
-		  return;
-		} catch (e) {
-		  if (e?.name === 'AbortError') return; // user canceled
-		  console.error(e);
-		  alert('Could not open using the file picker. Falling back to upload.');
-		}
-	  }
+  const importJSON = async () => {
+    // If supported, let user pick the file directly
+    if ("showOpenFilePicker" in window) {
+      try {
+        const [handle] = await window.showOpenFilePicker({
+          types: [
+            { description: "JSON", accept: { "application/json": [".json"] } },
+          ],
+          multiple: false,
+        });
+        const file = await handle.getFile();
+        const txt = await file.text();
+        const data = JSON.parse(txt);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        window.location.reload();
+        return;
+      } catch (e) {
+        if (e?.name === "AbortError") return; // user canceled
+        console.error(e);
+        alert("Could not open using the file picker. Falling back to upload.");
+      }
+    }
 
-	  // Fallback: classic file input
-	  const input = document.createElement('input');
-	  input.type = 'file';
-	  input.accept = '.json,application/json';
-	  input.onchange = () => {
-		const file = input.files?.[0];
-		if (!file) return;
-		file.text().then((txt) => {
-		  try {
-			const data = JSON.parse(txt);
-			localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-			window.location.reload();
-		  } catch {
-			alert('Invalid JSON file');
-		  }
-		});
-	  };
-	  input.click();
-	};
+    // Fallback: classic file input
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      file.text().then((txt) => {
+        try {
+          const data = JSON.parse(txt);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+          window.location.reload();
+        } catch {
+          alert("Invalid JSON file");
+        }
+      });
+    };
+    input.click();
+  };
 
   const resetData = () => {
     if (confirm("Reset all data to defaults?")) {
@@ -240,13 +262,22 @@ function ExportImport({ songs, albumTitle }) {
   };
   return (
     <div className="flex items-center gap-2">
-      <button className="px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700" onClick={exportJSON}>
+      <button
+        className="px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700"
+        onClick={exportJSON}
+      >
         Export
       </button>
-      <button className="px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700" onClick={importJSON}>
+      <button
+        className="px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700"
+        onClick={importJSON}
+      >
         Import
       </button>
-      <button className="px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700" onClick={resetData}>
+      <button
+        className="px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700"
+        onClick={resetData}
+      >
         Reset
       </button>
     </div>
@@ -266,7 +297,7 @@ function albumAverage(songs) {
 }
 
 function eligibleCount(songs, threshold = 75) {
-  return [...songs].filter(s => songAverage(s) >= threshold).length;
+  return [...songs].filter((s) => songAverage(s) >= threshold).length;
 }
 
 function Header({ targetISO, setTargetISO, songs, albumTitle, setAlbumTitle }) {
@@ -283,10 +314,10 @@ function Header({ targetISO, setTargetISO, songs, albumTitle, setAlbumTitle }) {
           placeholder="Album Title"
         />
       </div>
-	  
-	  <div className="text-2xl font-black tracking-wider">
-	  {eligibleCount(songs, 75)}/20
-	  </div>
+
+      <div className="text-2xl font-black tracking-wider">
+        {eligibleCount(songs, 75)}/20
+      </div>
 
       <div className="flex items-center gap-3 text-right">
         {editingDate ? (
@@ -294,17 +325,29 @@ function Header({ targetISO, setTargetISO, songs, albumTitle, setAlbumTitle }) {
             type="datetime-local"
             className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1"
             value={toLocalDatetimeInputValue(targetISO)}
-            onChange={(e) => setTargetISO(fromLocalDatetimeInputValue(e.target.value))}
+            onChange={(e) =>
+              setTargetISO(fromLocalDatetimeInputValue(e.target.value))
+            }
             onBlur={() => setEditingDate(false)}
             autoFocus
           />
         ) : (
-          <div className="cursor-pointer" onClick={() => setEditingDate(true)} title="Click to edit target deadline">
-            <div className="uppercase text-xs tracking-widest text-neutral-400">Time to Goal</div>
-            <div className="text-2xl tabular-nums font-semibold">
-              {days}d {String(hours).padStart(2, "0")}:{String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
+          <div
+            className="cursor-pointer"
+            onClick={() => setEditingDate(true)}
+            title="Click to edit target deadline"
+          >
+            <div className="uppercase text-xs tracking-widest text-neutral-400">
+              Time to Goal
             </div>
-            <div className="text-xs text-neutral-500">Target: {new Date(targetISO).toLocaleString()}</div>
+            <div className="text-2xl tabular-nums font-semibold">
+              {days}d {String(hours).padStart(2, "0")}:
+              {String(minutes).padStart(2, "0")}:
+              {String(seconds).padStart(2, "0")}
+            </div>
+            <div className="text-xs text-neutral-500">
+              Target: {new Date(targetISO).toLocaleString()}
+            </div>
           </div>
         )}
         <ExportImport songs={songs} albumTitle={albumTitle} />
@@ -313,18 +356,55 @@ function Header({ targetISO, setTargetISO, songs, albumTitle, setAlbumTitle }) {
   );
 }
 
-function StageRow({ stage, onApply, onRemove, stageRowHeight = "h-4" }) {
+/**
+ * StageRow — now supports drag-to-reorder via native HTML5 drag & drop.
+ */
+function StageRow({
+  stage,
+  index,
+  songId,
+  onApply,
+  onRemove,
+  onMove,
+  stageRowHeight = "h-4",
+}) {
   const [promptOpen, setPromptOpen] = useState(false);
 
   return (
-    <div className="flex items-center gap-2">
+    <div
+      className="flex items-center gap-2 cursor-move"
+      draggable
+      onDragStart={(e) => {
+        const payload = JSON.stringify({ songId, fromIndex: index });
+        e.dataTransfer.setData("text/plain", payload);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        const raw = e.dataTransfer.getData("text/plain");
+        if (!raw) return;
+        try {
+          const { songId: fromSongId, fromIndex } = JSON.parse(raw);
+          if (fromSongId !== songId) return;
+          if (typeof onMove === "function" && fromIndex !== index) {
+            onMove(fromIndex, index);
+          }
+        } catch {
+          // ignore malformed drops
+        }
+      }}
+    >
       <div className="flex-1">
         <ProgressBar
           value={stage.value}
           label={stage.name}
           editable
           onClick={() => setPromptOpen(true)}
-		  height = {stageRowHeight}
+          height={stageRowHeight}
         />
       </div>
       <button
@@ -351,61 +431,94 @@ function StageRow({ stage, onApply, onRemove, stageRowHeight = "h-4" }) {
   );
 }
 
-
 function SongCard({ song, onUpdate, onZoom }) {
   const avg = songAverage(song);
 
   const updateStageAt = (idx, patch) => {
-    const stages = song.stages.map((s, i) => (i === idx ? { ...s, ...patch } : s));
+    const stages = song.stages.map((s, i) =>
+      i === idx ? { ...s, ...patch } : s
+    );
     onUpdate({ ...song, stages });
   };
 
-  const removeStageAt = (idx) => onUpdate({ ...song, stages: song.stages.filter((_, i) => i !== idx) });
-  const addStage = () => onUpdate({ ...song, stages: [...song.stages, { name: `Stage ${song.stages.length + 1}`, value: 0 }] });
+  const removeStageAt = (idx) =>
+    onUpdate({
+      ...song,
+      stages: song.stages.filter((_, i) => i !== idx),
+    });
+
+  const addStage = () =>
+    onUpdate({
+      ...song,
+      stages: [
+        ...song.stages,
+        { name: `Stage ${song.stages.length + 1}`, value: 0 },
+      ],
+    });
+
+  const moveStage = (fromIndex, toIndex) => {
+    if (fromIndex === toIndex) return;
+    const updatedStages = [...song.stages];
+    const [moved] = updatedStages.splice(fromIndex, 1);
+    updatedStages.splice(toIndex, 0, moved);
+    onUpdate({ ...song, stages: updatedStages });
+  };
 
   return (
-                   <div className="bg-neutral-900 border border-neutral-800 ... h-[232px] w-full max-w-sm">
-		  <div className="flex items-center justify-between gap-2">
-			<EditableText
-			  text={song.title}
-			  onSubmit={(t) => onUpdate({ ...song, title: t })}
-			  className="font-bold leading-tight text-xl tracking-wider"
-			/>
-			<button className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700" onClick={() => onZoom(song.id)} title="Zoom">Zoom</button>
-		  </div>
+    <div className="bg-neutral-900 border border-neutral-800 ... h-[232px] w-full max-w-sm">
+      <div className="flex items-center justify-between gap-2">
+        <EditableText
+          text={song.title}
+          onSubmit={(t) => onUpdate({ ...song, title: t })}
+          className="font-bold leading-tight text-xl tracking-wider"
+        />
+        <button
+          className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
+          onClick={() => onZoom(song.id)}
+          title="Zoom"
+        >
+          Zoom
+        </button>
+      </div>
 
-		  {/* Overall song progress (derived) */}
-		  <div className="relative">
-			<ProgressBar value={avg} height="h-5" /> {/* slightly smaller bar */}
-			<span className="absolute inset-0 flex items-center justify-center text-white font-bold text-sm">
-			  {avg}%
-			</span>
-		  </div>
+      {/* Overall song progress (derived) */}
+      <div className="relative">
+        <ProgressBar value={avg} height="h-5" />{" "}
+        {/* slightly smaller bar */}
+        <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-sm">
+          {avg}%
+        </span>
+      </div>
 
-		  <div className="flex-1 overflow-auto pr-1">
-			<div className="flex flex-col gap-1"> {/* less vertical gap */}
-			  {song.stages.map((stg, idx) => (
-				<StageRow
-				  key={`${stg.name}-${idx}`}
-				  stage={stg}
-				  onApply={(name, value) => updateStageAt(idx, { name, value })}
-				  onRemove={() => removeStageAt(idx)}
-				/>
-			  ))}
-			</div>
-		  </div>
+      <div className="flex-1 overflow-auto pr-1">
+        <div className="flex flex-col gap-1">
+          {/* less vertical gap */}
+          {song.stages.map((stg, idx) => (
+            <StageRow
+              key={`${stg.name}-${idx}`}
+              stage={stg}
+              index={idx}
+              songId={song.id}
+              onApply={(name, value) =>
+                updateStageAt(idx, { name, value })
+              }
+              onRemove={() => removeStageAt(idx)}
+              onMove={moveStage}
+            />
+          ))}
+        </div>
+      </div>
 
-		  {/* footer shrunk */}
-		  <div className="flex items-center justify-end pt-1">
-			<button
-			  className="w-3 h-3 flex items-center justify-center text-sm rounded bg-neutral-800 hover:bg-neutral-700"
-			  onClick={addStage}
-			>
-			  +
-			</button>
-		  </div>
-		</div>
-
+      {/* footer shrunk */}
+      <div className="flex items-center justify-end pt-1">
+        <button
+          className="w-3 h-3 flex items-center justify-center text-sm rounded bg-neutral-800 hover:bg-neutral-700"
+          onClick={addStage}
+        >
+          +
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -413,63 +526,93 @@ function SongDetail({ song, onUpdate, onBack }) {
   const avg = songAverage(song);
 
   const updateStageAt = (idx, patch) => {
-    const stages = song.stages.map((s, i) => (i === idx ? { ...s, ...patch } : s));
+    const stages = song.stages.map((s, i) =>
+      i === idx ? { ...s, ...patch } : s
+    );
     onUpdate({ ...song, stages });
   };
 
-  const removeStageAt = (idx) => onUpdate({ ...song, stages: song.stages.filter((_, i) => i !== idx) });
-  const addStage = () => onUpdate({ ...song, stages: [...song.stages, { name: `Stage ${song.stages.length + 1}`, value: 0 }] });
+  const removeStageAt = (idx) =>
+    onUpdate({
+      ...song,
+      stages: song.stages.filter((_, i) => i !== idx),
+    });
+
+  const addStage = () =>
+    onUpdate({
+      ...song,
+      stages: [
+        ...song.stages,
+        { name: `Stage ${song.stages.length + 1}`, value: 0 },
+      ],
+    });
+
+  const moveStage = (fromIndex, toIndex) => {
+    if (fromIndex === toIndex) return;
+    const updatedStages = [...song.stages];
+    const [moved] = updatedStages.splice(fromIndex, 1);
+    updatedStages.splice(toIndex, 0, moved);
+    onUpdate({ ...song, stages: updatedStages });
+  };
 
   return (
-	  <div className="h-screen w-screen bg-black flex items-center justify-center">
-		<div
-		  className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-lg flex flex-col"
-		  style={{ width: 740, height: 724 }}  // keep your chosen size
-		>
-		  <div className="flex items-center justify-between mb-4">
-			<EditableText
-			  text={song.title}
-			  onSubmit={(t) => onUpdate({ ...song, title: t })}
-			  className="text-3xl font-bold"
-			/>
-			<button className="px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700" onClick={onBack}>
-			  Back to Grid
-			</button>
-		  </div>
+    <div className="h-screen w-screen bg-black flex items-center justify-center">
+      <div
+        className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-lg flex flex-col"
+        style={{ width: 740, height: 724 }} // keep your chosen size
+      >
+        <div className="flex items-center justify-between mb-4">
+          <EditableText
+            text={song.title}
+            onSubmit={(t) => onUpdate({ ...song, title: t })}
+            className="text-3xl font-bold"
+          />
+          <button
+            className="px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700"
+            onClick={onBack}
+          >
+            Back to Grid
+          </button>
+        </div>
 
-		  <div className="relative mb-3">
-			<ProgressBar value={avg} height="h-9" />
-			<span className="absolute inset-0 flex items-center justify-center text-white font-bold">
-			  {avg}%
-			</span>
-		  </div>
+        <div className="relative mb-3">
+          <ProgressBar value={avg} height="h-9" />
+          <span className="absolute inset-0 flex items-center justify-center text-white font-bold">
+            {avg}%
+          </span>
+        </div>
 
-		  {/* make this fill remaining space; no fixed height */}
-		  <div className="flex-1 overflow-auto pr-1">
-			<div className="flex flex-col gap-3">
-			  {song.stages.map((stg, idx) => (
-				  <StageRow
-					key={`${stg.name}-${idx}`}
-					stage={stg}
-					onApply={(name, value) => updateStageAt(idx, { name, value })}
-					onRemove={() => removeStageAt(idx)}
-					stageRowHeight = "h-8"
-				  />
-				))}
-			</div>
-		  </div>
+        {/* make this fill remaining space; no fixed height */}
+        <div className="flex-1 overflow-auto pr-1">
+          <div className="flex flex-col gap-3">
+            {song.stages.map((stg, idx) => (
+              <StageRow
+                key={`${stg.name}-${idx}`}
+                stage={stg}
+                index={idx}
+                songId={song.id}
+                onApply={(name, value) =>
+                  updateStageAt(idx, { name, value })
+                }
+                onRemove={() => removeStageAt(idx)}
+                onMove={moveStage}
+                stageRowHeight="h-8"
+              />
+            ))}
+          </div>
+        </div>
 
-		  <div className="pt-3 flex items-center justify-between">
-			<button
-			  className="w-9 h-9 flex items-center justify-center text-lg rounded bg-neutral-800 hover:bg-neutral-700"
-			  onClick={addStage}
-			>
-			  +
-			</button>
-		  </div>
-		</div>
-	  </div>
-	);
+        <div className="pt-3 flex items-center justify-between">
+          <button
+            className="w-9 h-9 flex items-center justify-center text-lg rounded bg-neutral-800 hover:bg-neutral-700"
+            onClick={addStage}
+          >
+            +
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function toLocalDatetimeInputValue(isoString) {
@@ -504,47 +647,57 @@ export default function App() {
     return s.map((song) => {
       if (Array.isArray(song.stages)) return song; // v2+
       if (song.stages && typeof song.stages === "object") {
-        const entries = Object.entries(song.stages).map(([name, value]) => ({ name, value: Number(value) || 0 }));
+        const entries = Object.entries(song.stages).map(([name, value]) => ({
+          name,
+          value: Number(value) || 0,
+        }));
         return { ...song, stages: entries };
       }
-      return { ...song, stages: DEFAULT_STAGE_NAMES.map((n) => ({ name: n, value: 0 })) };
+      return {
+        ...song,
+        stages: DEFAULT_STAGE_NAMES.map((n) => ({ name: n, value: 0 })),
+      };
     });
   };
 
-  const [songs, setSongs] = useState(() => migrateSongs(stored.songs) || DEFAULT_SONGS);
-  const [albumTitle, setAlbumTitle] = useState(() => stored.albumTitle || "Album Dashboard");
+  const [songs, setSongs] = useState(
+    () => migrateSongs(stored.songs) || DEFAULT_SONGS
+  );
+  const [albumTitle, setAlbumTitle] = useState(
+    () => stored.albumTitle || "Album Dashboard"
+  );
   const [targetISO, setTargetISO] = useState(
-      () => stored.targetISO || new Date("2026-08-01T00:00:00").toISOString()
+    () => stored.targetISO || new Date("2026-08-01T00:00:00").toISOString()
   );
 
   // How many tracks are actually on this album (just visibility/logic, not storage)
   const [songCount, setSongCount] = useState(() => {
-      const saved = Number(stored.songCount);
-      if (Number.isFinite(saved) && saved > 0) {
-          return saved;
-      }
-      if (stored.songs && Array.isArray(stored.songs) && stored.songs.length) {
-          return stored.songs.length;
-      }
-      return DEFAULT_SONGS.length;
+    const saved = Number(stored.songCount);
+    if (Number.isFinite(saved) && saved > 0) {
+      return saved;
+    }
+    if (stored.songs && Array.isArray(stored.songs) && stored.songs.length) {
+      return stored.songs.length;
+    }
+    return DEFAULT_SONGS.length;
   });
 
   // Clamp songCount to the current songs length whenever songs change (e.g. import)
   useEffect(() => {
-      setSongCount((current) => {
-          const max = songs.length || 1;
-          if (!Number.isFinite(current) || current < 1) return 1;
-          if (current > max) return max;
-          return current;
-      });
+    setSongCount((current) => {
+      const max = songs.length || 1;
+      if (!Number.isFinite(current) || current < 1) return 1;
+      if (current > max) return max;
+      return current;
+    });
   }, [songs.length]);
 
   const handleSongCountChange = (raw) => {
-      const requested = Number(raw);
-      if (!Number.isFinite(requested)) return;
-      const max = songs.length || 1;
-      const clamped = Math.min(max, Math.max(1, requested));
-      setSongCount(clamped);
+    const requested = Number(raw);
+    if (!Number.isFinite(requested)) return;
+    const max = songs.length || 1;
+    const clamped = Math.min(max, Math.max(1, requested));
+    setSongCount(clamped);
   };
 
   const hash = useHashRoute();
@@ -556,89 +709,91 @@ export default function App() {
     return null;
   }, [hash]);
 
-  const currentSong = songIdFromHash ? songs.find((s) => s.id === songIdFromHash) : null;
+  const currentSong = songIdFromHash
+    ? songs.find((s) => s.id === songIdFromHash)
+    : null;
 
   // Only the first `songCount` songs are treated as part of the album
   const visibleSongs = useMemo(
-      () => songs.slice(0, songCount),
-      [songs, songCount]
+    () => songs.slice(0, songCount),
+    [songs, songCount]
   );
 
   useEffect(() => {
-      localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({ songs, targetISO, albumTitle, songCount })
-      );
-      }, [songs, targetISO, albumTitle, songCount]);
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ songs, targetISO, albumTitle, songCount })
+    );
+  }, [songs, targetISO, albumTitle, songCount]);
 
-  const updateSong = (updated) => setSongs((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+  const updateSong = (updated) =>
+    setSongs((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
 
-	  useEffect(() => {
-		document.title = albumTitle + " " + "Planning" || "Album Dashboard";
-	  }, [albumTitle]);
-	  
+  useEffect(() => {
+    document.title = albumTitle + " " + "Planning" || "Album Dashboard";
+  }, [albumTitle]);
+
   return (
     <div className="min-h-screen w-full bg-neutral-950 text-neutral-100 overflow-x-auto">
-
       {currentSong ? (
-		  <SongDetail
-			song={currentSong}
-			onUpdate={updateSong}
-			onBack={() => (window.location.hash = "")}
-		  />
-		) : (
-		  <>
-              <Header
-                  targetISO={targetISO}
-                  setTargetISO={setTargetISO}
-                  songs={visibleSongs}
-                  albumTitle={albumTitle}
-                  setAlbumTitle={setAlbumTitle}
-                  albumSize={songCount}
+        <SongDetail
+          song={currentSong}
+          onUpdate={updateSong}
+          onBack={() => (window.location.hash = "")}
+        />
+      ) : (
+        <>
+          <Header
+            targetISO={targetISO}
+            setTargetISO={setTargetISO}
+            songs={visibleSongs}
+            albumTitle={albumTitle}
+            setAlbumTitle={setAlbumTitle}
+            albumSize={songCount}
+          />
+
+          {/* Album-wide overall progress (with % in center) */}
+          <div className="px-4 -mt-2 pb-2 relative">
+            <ProgressBar value={albumAverage(visibleSongs)} height="h-9" />
+            <span
+              className="absolute inset-0 text-white font-bold"
+              style={{
+                lineHeight: "36px", // match h-9 (36px)
+                textAlign: "center",
+              }}
+            >
+              {albumAverage(visibleSongs)}%
+            </span>
+          </div>
+          <div className="px-4 pb-2 flex items-center justify-between text-xs text-neutral-400">
+            <span>Tracks in album: {songCount}</span>
+            <label className="flex items-center gap-2">
+              <span>Album tracks</span>
+              <input
+                type="number"
+                min={1}
+                max={songs.length}
+                value={songCount}
+                onChange={(e) => handleSongCountChange(e.target.value)}
+                className="w-16 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs"
               />
+            </label>
+          </div>
 
-			{/* Album-wide overall progress (with % in center) */}
-            <div className="px-4 -mt-2 pb-2 relative">
-                <ProgressBar value={albumAverage(visibleSongs)} height="h-9" />
-			  <span
-				className="absolute inset-0 text-white font-bold"
-				style={{
-				  lineHeight: "36px", // match h-9 (36px)
-				  textAlign: "center",
-				}}
-			  >
-				{albumAverage(visibleSongs)}%
-			  </span>
-			</div>
-            <div className="px-4 pb-2 flex items-center justify-between text-xs text-neutral-400">
-                <span>Tracks in album: {songCount}</span>
-                <label className="flex items-center gap-2">
-                    <span>Album tracks</span>
-                    <input
-                        type="number"
-                        min={1}
-                        max={songs.length}
-                        value={songCount}
-                        onChange={(e) => handleSongCountChange(e.target.value)}
-                        className="w-16 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs"
-                    />
-                </label>
+          <div className="px-4 pb-4 h-[calc(100vh-140px)] overflow-auto">
+            <div className="grid gap-3 justify-items-stretch xl:grid-cols-5 lg:grid-cols-4 md:grid-cols-3 sm:grid-cols-2 grid-cols-1">
+              {visibleSongs.map((song) => (
+                <SongCard
+                  key={song.id}
+                  song={song}
+                  onUpdate={updateSong}
+                  onZoom={(id) => (window.location.hash = `#song/${id}`)}
+                />
+              ))}
             </div>
-
-			<div className="px-4 pb-4 h-[calc(100vh-140px)] overflow-auto">
-                <div className="grid gap-3 justify-items-stretch xl:grid-cols-5 lg:grid-cols-4 md:grid-cols-3 sm:grid-cols-2 grid-cols-1">
-				{visibleSongs.map((song) => (
-				  <SongCard
-					key={song.id}
-					song={song}
-					onUpdate={updateSong}
-					onZoom={(id) => (window.location.hash = `#song/${id}`)}
-				  />
-				))}
-			  </div>
-			</div>
-		  </>
-		)}
+          </div>
+        </>
+      )}
     </div>
   );
 }
