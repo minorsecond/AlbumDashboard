@@ -483,14 +483,14 @@ function SongCard({ song, onUpdate, onZoom }) {
         setDraggingIndex(index);
     };
 
-    // Clear highlight when drag finishes anywhere
+    // Clear highlight when drag finishes anywhere in the window
     useEffect(() => {
         const clear = () => setDraggingIndex(null);
-        window.addEventListener("mouseup", clear);
         window.addEventListener("dragend", clear);
+        window.addEventListener("drop", clear);
         return () => {
-            window.removeEventListener("mouseup", clear);
             window.removeEventListener("dragend", clear);
+            window.removeEventListener("drop", clear);
         };
     }, []);
 
@@ -598,11 +598,11 @@ function SongDetail({ song, onUpdate, onBack }) {
 
     useEffect(() => {
         const clear = () => setDraggingIndex(null);
-        window.addEventListener("mouseup", clear);
         window.addEventListener("dragend", clear);
+        window.addEventListener("drop", clear);
         return () => {
-            window.removeEventListener("mouseup", clear);
             window.removeEventListener("dragend", clear);
+            window.removeEventListener("drop", clear);
         };
     }, []);
 
