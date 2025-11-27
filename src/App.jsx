@@ -483,7 +483,6 @@ function SongCard({ song, onUpdate, onZoom }) {
         setDraggingIndex(index);
     };
 
-    // Clear highlight when drag finishes anywhere in the window
     useEffect(() => {
         const clear = () => setDraggingIndex(null);
         window.addEventListener("dragend", clear);
@@ -512,14 +511,14 @@ function SongCard({ song, onUpdate, onZoom }) {
             </div>
 
             {/* Overall song progress (derived) */}
-            <div className="relative">
+            <div className="relative mb-2">
                 <ProgressBar value={avg} height="h-5" />
                 <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-sm">
           {avg}%
         </span>
             </div>
 
-            <div className="flex-1 overflow-auto pr-1">
+            <div className="flex-1 overflow-auto pr-1 pt-1">
                 <div className="flex flex-col gap-1">
                     {song.stages.map((stg, idx) => (
                         <StageRow
@@ -538,7 +537,6 @@ function SongCard({ song, onUpdate, onZoom }) {
                 </div>
             </div>
 
-            {/* footer shrunk */}
             <div className="flex items-center justify-end pt-1">
                 <button
                     className="w-3 h-3 flex items-center justify-center text-sm rounded bg-neutral-800 hover:bg-neutral-700"
