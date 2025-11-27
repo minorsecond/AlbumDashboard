@@ -596,20 +596,32 @@ function SongCard({
                     e.preventDefault();
                 }}
             >
-                <EditableText
-                    text={song.title}
-                    onSubmit={(t) => onUpdate({ ...song, title: t })}
-                    className="font-bold leading-tight text-xl tracking-wider"
-                />
+                <div className="flex items-center gap-2">
+                    {/* visual handle only; header is still the drag target */}
+                    <div
+                        className="shrink-0 w-4 h-4 flex items-center justify-center text-neutral-500
+                 cursor-grab active:cursor-grabbing select-none hover:text-neutral-300"
+                        title="Drag to reorder track"
+                    >
+                        ⋮⋮
+                    </div>
+
+                    <EditableText
+                        text={song.title}
+                        onSubmit={(t) => onUpdate({ ...song, title: t })}
+                        className="font-bold leading-tight text-xl tracking-wider"
+                    />
+                </div>
+
                 <div className="flex items-center gap-2">
                     {avg >= 100 ? (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-800 text-emerald-100 uppercase tracking-widest">
-              Done
-            </span>
+        Done
+      </span>
                     ) : avg >= 75 ? (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-800 text-amber-100 uppercase tracking-widest">
-              Ready
-            </span>
+        Ready
+      </span>
                     ) : null}
 
                     <button
@@ -890,7 +902,6 @@ export default function App() {
         return () => {
             isMounted = false;
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleSongDragStart = (index) => {
