@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Album Progress Dashboard — v3
@@ -131,10 +132,12 @@ function EditableText({ text, onSubmit, className, placeholder }) {
 function EditStagePrompt({ initialName, initialValue, onClose }) {
     const [name, setName] = useState(initialName || "");
     const [val, setVal] = useState(String(initialValue ?? 0));
-    return (
+
+    const content = (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
             <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-5 w-full max-w-md space-y-4">
                 <div className="text-lg font-semibold">Edit bit</div>
+
                 <div className="space-y-2">
                     <label className="text-sm text-neutral-300">Name</label>
                     <input
@@ -143,6 +146,7 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
                         onChange={(e) => setName(e.target.value)}
                     />
                 </div>
+
                 <div className="space-y-2">
                     <label className="text-sm text-neutral-300">
                         Progress: {clamp01(Number(val) || 0)}%
@@ -154,11 +158,11 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
                         value={Number(val) || 0}
                         onChange={(e) => setVal(e.target.value)}
                         className="w-full"
-                        // Make sure slider drags don't accidentally start any HTML5 drag on parents
                         onMouseDown={(e) => e.stopPropagation()}
                         onDragStart={(e) => e.preventDefault()}
                     />
                 </div>
+
                 <div className="flex gap-2 justify-end">
                     <button
                         className="px-3 py-2 rounded bg-neutral-800 hover:bg-neutral-700"
@@ -181,33 +185,36 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
             </div>
         </div>
     );
+
+    // In SSR or very early render, `document` might not exist.
+    if (typeof document === "undefined") {
+        return content;
+    }
+
+    return createPortal(content, document.body);
 }
 
 function ExportImport({ songs, albumTitle }) {
     const exportJSON = async () => {
         const data = JSON.stringify({ songs, albumTitle }, null, 2);
 
-        // If supported (Chromium browsers), let the user pick the exact file to overwrite
         if ("showSaveFilePicker" in window) {
             try {
                 const handle = await window.showSaveFilePicker({
                     suggestedName: "album_dashboard.json",
-                    types: [
-                        { description: "JSON", accept: { "application/json": [".json"] } },
-                    ],
+                    types: [{ description: "JSON", accept: { "application/json": [".json"] } }],
                 });
                 const writable = await handle.createWritable();
                 await writable.write(new Blob([data], { type: "application/json" }));
                 await writable.close();
                 return;
             } catch (e) {
-                if (e?.name === "AbortError") return; // user canceled
+                if (e?.name === "AbortError") return;
                 console.error(e);
                 alert("Could not save using the file picker. Falling back to download.");
             }
         }
 
-        // Fallback: normal download to the browser’s default folder
         const blob = new Blob([data], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -218,13 +225,10 @@ function ExportImport({ songs, albumTitle }) {
     };
 
     const importJSON = async () => {
-        // If supported, let user pick the file directly
         if ("showOpenFilePicker" in window) {
             try {
                 const [handle] = await window.showOpenFilePicker({
-                    types: [
-                        { description: "JSON", accept: { "application/json": [".json"] } },
-                    ],
+                    types: [{ description: "JSON", accept: { "application/json": [".json"] } }],
                     multiple: false,
                 });
                 const file = await handle.getFile();
@@ -234,13 +238,12 @@ function ExportImport({ songs, albumTitle }) {
                 window.location.reload();
                 return;
             } catch (e) {
-                if (e?.name === "AbortError") return; // user canceled
+                if (e?.name === "AbortError") return;
                 console.error(e);
                 alert("Could not open using the file picker. Falling back to upload.");
             }
         }
 
-        // Fallback: classic file input
         const input = document.createElement("input");
         input.type = "file";
         input.accept = ".json,application/json";
@@ -331,9 +334,7 @@ function Header({ targetISO, setTargetISO, songs, albumTitle, setAlbumTitle }) {
                         type="datetime-local"
                         className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1"
                         value={toLocalDatetimeInputValue(targetISO)}
-                        onChange={(e) =>
-                            setTargetISO(fromLocalDatetimeInputValue(e.target.value))
-                        }
+                        onChange={(e) => setTargetISO(fromLocalDatetimeInputValue(e.target.value))}
                         onBlur={() => setEditingDate(false)}
                         autoFocus
                     />
@@ -444,17 +445,17 @@ function StageRow({
 function SongCard({ song, onUpdate, onZoom }) {
     const avg = songAverage(song);
 
-    // decide border color based on completion
     const cardBorderClass =
-        avg >= 100 ? "border-emerald-600" :
-            avg >= 75  ? "border-amber-600"  :
-                avg > 0    ? "border-neutral-700" :
-                    "border-neutral-800";
+        avg >= 100
+            ? "border-emerald-600"
+            : avg >= 75
+                ? "border-amber-600"
+                : avg > 0
+                    ? "border-neutral-700"
+                    : "border-neutral-800";
 
     const updateStageAt = (idx, patch) => {
-        const stages = song.stages.map((s, i) =>
-            i === idx ? { ...s, ...patch } : s
-        );
+        const stages = song.stages.map((s, i) => (i === idx ? { ...s, ...patch } : s));
         onUpdate({ ...song, stages });
     };
 
@@ -467,10 +468,7 @@ function SongCard({ song, onUpdate, onZoom }) {
     const addStage = () =>
         onUpdate({
             ...song,
-            stages: [
-                ...song.stages,
-                { name: `Stage ${song.stages.length + 1}`, value: 0 },
-            ],
+            stages: [...song.stages, { name: `Stage ${song.stages.length + 1}`, value: 0 }],
         });
 
     const moveStage = (fromIndex, toIndex) => {
@@ -503,13 +501,21 @@ function SongCard({ song, onUpdate, onZoom }) {
         };
     }, []);
 
+    const resetStages = () =>
+        onUpdate({
+            ...song,
+            stages: song.stages.map((s) => ({ ...s, value: 0 })),
+        });
+
+    const completeSong = () =>
+        onUpdate({
+            ...song,
+            stages: song.stages.map((s) => ({ ...s, value: 100 })),
+        });
+
     return (
         <div
-            className={`bg-neutral-900 border ${cardBorderClass} rounded-xl
-      h-[232px] w-full max-w-sm
-      transition-all duration-200
-      hover:-translate-y-0.5 hover:border-neutral-400
-      px-3 pt-2 pb-2`}   // ⬅️ added padding here
+            className={`bg-neutral-900 border ${cardBorderClass} rounded-xl h-[232px] w-full max-w-sm px-3 pt-2 pb-2 transition-all duration-200 hover:-translate-y-0.5 hover:border-neutral-400 flex flex-col`}
         >
             <div className="flex items-center justify-between gap-2 mb-1">
                 <EditableText
@@ -550,10 +556,25 @@ function SongCard({ song, onUpdate, onZoom }) {
                 </div>
             </div>
 
-            <div className="flex items-center justify-end pt-1">
+            <div className="mt-2 flex items-center justify-between text-[11px]">
+                <div className="flex items-center gap-1">
+                    <button
+                        className="px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-700 hover:bg-neutral-800"
+                        onClick={resetStages}
+                    >
+                        Reset
+                    </button>
+                    <button
+                        className="px-1.5 py-0.5 rounded bg-emerald-700 hover:bg-emerald-600"
+                        onClick={completeSong}
+                    >
+                        100%
+                    </button>
+                </div>
                 <button
-                    className="w-3 h-3 flex items-center justify-center text-sm rounded bg-neutral-800 hover:bg-neutral-700"
+                    className="w-6 h-5 flex items-center justify-center text-sm rounded bg-neutral-800 hover:bg-neutral-700"
                     onClick={addStage}
+                    title="Add bit"
                 >
                     +
                 </button>
@@ -566,9 +587,7 @@ function SongDetail({ song, onUpdate, onBack }) {
     const avg = songAverage(song);
 
     const updateStageAt = (idx, patch) => {
-        const stages = song.stages.map((s, i) =>
-            i === idx ? { ...s, ...patch } : s
-        );
+        const stages = song.stages.map((s, i) => (i === idx ? { ...s, ...patch } : s));
         onUpdate({ ...song, stages });
     };
 
@@ -581,10 +600,7 @@ function SongDetail({ song, onUpdate, onBack }) {
     const addStage = () =>
         onUpdate({
             ...song,
-            stages: [
-                ...song.stages,
-                { name: `Stage ${song.stages.length + 1}`, value: 0 },
-            ],
+            stages: [...song.stages, { name: `Stage ${song.stages.length + 1}`, value: 0 }],
         });
 
     const moveStage = (fromIndex, toIndex) => {
@@ -621,7 +637,7 @@ function SongDetail({ song, onUpdate, onBack }) {
         <div className="h-screen w-screen bg-black flex items-center justify-center">
             <div
                 className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-lg flex flex-col"
-                style={{ width: 740, height: 724 }} // keep your chosen size
+                style={{ width: 740, height: 724 }}
             >
                 <div className="flex items-center justify-between mb-4">
                     <EditableText
@@ -644,7 +660,6 @@ function SongDetail({ song, onUpdate, onBack }) {
           </span>
                 </div>
 
-                {/* make this fill remaining space; no fixed height */}
                 <div className="flex-1 overflow-auto pr-1">
                     <div className="flex flex-col gap-3">
                         {song.stages.map((stg, idx) => (
@@ -652,9 +667,7 @@ function SongDetail({ song, onUpdate, onBack }) {
                                 key={`${stg.name}-${idx}`}
                                 stage={stg}
                                 index={idx}
-                                onApply={(name, value) =>
-                                    updateStageAt(idx, { name, value })
-                                }
+                                onApply={(name, value) => updateStageAt(idx, { name, value })}
                                 onRemove={() => removeStageAt(idx)}
                                 stageRowHeight="h-8"
                                 draggingIndex={draggingIndex}
@@ -704,7 +717,6 @@ export default function App() {
         }
     }, []);
 
-    // Migrate older storage shapes
     const migrateSongs = (s) => {
         if (!s) return DEFAULT_SONGS;
         return s.map((song) => {
@@ -723,9 +735,7 @@ export default function App() {
         });
     };
 
-    const [songs, setSongs] = useState(
-        () => migrateSongs(stored.songs) || DEFAULT_SONGS
-    );
+    const [songs, setSongs] = useState(() => migrateSongs(stored.songs) || DEFAULT_SONGS);
     const [albumTitle, setAlbumTitle] = useState(
         () => stored.albumTitle || "Album Dashboard"
     );
