@@ -309,7 +309,15 @@ function eligibleCount(songs, threshold = 75) {
     return [...songs].filter((s) => songAverage(s) >= threshold).length;
 }
 
-function Header({ targetISO, setTargetISO, songs, albumTitle, setAlbumTitle }) {
+function Header({
+                    targetISO,
+                    setTargetISO,
+                    songs,
+                    albumTitle,
+                    setAlbumTitle,
+                    albumSize,
+                    readyThreshold = 75,
+                }) {
     const { days, hours, minutes, seconds } = useCountdown(targetISO);
     const [editingDate, setEditingDate] = useState(false);
 
@@ -324,8 +332,13 @@ function Header({ targetISO, setTargetISO, songs, albumTitle, setAlbumTitle }) {
                 />
             </div>
 
-            <div className="text-2xl font-black tracking-wider">
-                {eligibleCount(songs, 75)}/20
+            <div className="flex flex-col items-center">
+                <div className="text-2xl font-black tracking-wider tabular-nums">
+                    {eligibleCount(songs, readyThreshold)}/{albumSize}
+                </div>
+                <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+                    Tracks ≥ {readyThreshold}% done
+                </div>
             </div>
 
             <div className="flex items-center gap-3 text-right">
