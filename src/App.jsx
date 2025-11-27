@@ -574,7 +574,7 @@ export default function App() {
   const updateSong = (updated) => setSongs((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
 
 	  useEffect(() => {
-		document.title = "ALBUM 2026";
+		document.title = albumTitle + " " + "Planning" || "Album Dashboard";
 	  }, [albumTitle]);
 	  
   return (
