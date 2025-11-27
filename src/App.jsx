@@ -74,6 +74,10 @@ const clamp01 = (v) => Math.min(100, Math.max(0, v));
 function ProgressBar({ value, editable = false, onClick, height = "h-4", label }) {
     const pct = clamp01(value);
     const barColor = pct >= 100 ? "bg-emerald-700" : "bg-amber-700";
+
+    const baseTitle = label ? `${label}: ${pct}%` : `${pct}%`;
+    const title = editable ? `${baseTitle} (click to edit)` : baseTitle;
+
     return (
         <div className="w-full flex items-center gap-2">
             <div
@@ -81,7 +85,7 @@ function ProgressBar({ value, editable = false, onClick, height = "h-4", label }
                     editable ? "cursor-pointer" : ""
                 }`}
                 onClick={editable ? onClick : undefined}
-                title={editable ? "Click to edit" : undefined}
+                title={title}
             >
                 <div
                     className={`h-full ${barColor} transition-[width] duration-200 ease-out`}
@@ -133,6 +137,12 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
     const [name, setName] = useState(initialName || "");
     const [val, setVal] = useState(String(initialValue ?? 0));
 
+    const handleSliderChange = (e) => {
+        const raw = Number(e.target.value) || 0;
+        const snapped = Math.round(raw / 5) * 5; // 5% increments
+        setVal(String(clamp01(snapped)));
+    };
+
     const content = (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
             <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-5 w-full max-w-md space-y-4">
@@ -155,8 +165,9 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
                         type="range"
                         min={0}
                         max={100}
+                        step={5}
                         value={Number(val) || 0}
-                        onChange={(e) => setVal(e.target.value)}
+                        onChange={handleSliderChange}
                         className="w-full"
                         onMouseDown={(e) => e.stopPropagation()}
                         onDragStart={(e) => e.preventDefault()}
@@ -537,13 +548,25 @@ function SongCard({ song, onUpdate, onZoom }) {
                     onSubmit={(t) => onUpdate({ ...song, title: t })}
                     className="font-bold leading-tight text-xl tracking-wider"
                 />
-                <button
-                    className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
-                    onClick={() => onZoom(song.id)}
-                    title="Zoom"
-                >
-                    Zoom
-                </button>
+                <div className="flex items-center gap-2">
+                    {avg >= 100 ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-800 text-emerald-100 uppercase tracking-widest">
+                Done
+            </span>
+                    ) : avg >= 75 ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-800 text-amber-100 uppercase tracking-widest">
+                Ready
+            </span>
+                    ) : null}
+
+                    <button
+                        className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
+                        onClick={() => onZoom(song.id)}
+                        title="Zoom"
+                    >
+                        Zoom
+                    </button>
+                </div>
             </div>
 
             <div className="relative mb-2">
