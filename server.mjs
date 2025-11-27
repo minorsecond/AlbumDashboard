@@ -187,7 +187,7 @@ function loadSnapshotForProject(projectId) {
 
     const tracks = db
         .prepare(
-            "SELECT * FROM tracks WHERE project_id = ? ORDER BY track_index ASC"
+            "SELECT * FROM tracks WHERE project_id = ? ORDER BY track_index"
         )
         .all(projectId);
 
@@ -196,7 +196,7 @@ function loadSnapshotForProject(projectId) {
     }
 
     const stageStmt = db.prepare(
-        "SELECT * FROM track_stages WHERE track_id = ? ORDER BY stage_index ASC"
+        "SELECT * FROM track_stages WHERE track_id = ? ORDER BY stage_index"
     );
 
     const songs = tracks.map((t) => {
