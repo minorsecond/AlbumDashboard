@@ -444,6 +444,13 @@ function StageRow({
 function SongCard({ song, onUpdate, onZoom }) {
     const avg = songAverage(song);
 
+    // decide border color based on completion
+    const cardBorderClass =
+        avg >= 100 ? "border-emerald-600" :
+            avg >= 75  ? "border-amber-600"  :
+                avg > 0    ? "border-neutral-700" :
+                    "border-neutral-800";
+
     const updateStageAt = (idx, patch) => {
         const stages = song.stages.map((s, i) =>
             i === idx ? { ...s, ...patch } : s
@@ -497,8 +504,14 @@ function SongCard({ song, onUpdate, onZoom }) {
     }, []);
 
     return (
-        <div className="bg-neutral-900 border border-neutral-800 ... h-[232px] w-full max-w-sm">
-            <div className="flex items-center justify-between gap-2">
+        <div
+            className={`bg-neutral-900 border ${cardBorderClass} rounded-xl
+      h-[232px] w-full max-w-sm
+      transition-all duration-200
+      hover:-translate-y-0.5 hover:border-neutral-400
+      px-3 pt-2 pb-2`}   // ⬅️ added padding here
+        >
+            <div className="flex items-center justify-between gap-2 mb-1">
                 <EditableText
                     text={song.title}
                     onSubmit={(t) => onUpdate({ ...song, title: t })}
@@ -513,7 +526,6 @@ function SongCard({ song, onUpdate, onZoom }) {
                 </button>
             </div>
 
-            {/* Overall song progress (derived) */}
             <div className="relative mb-2">
                 <ProgressBar value={avg} height="h-5" />
                 <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-sm">
@@ -528,9 +540,7 @@ function SongCard({ song, onUpdate, onZoom }) {
                             key={`${stg.name}-${idx}`}
                             stage={stg}
                             index={idx}
-                            onApply={(name, value) =>
-                                updateStageAt(idx, { name, value })
-                            }
+                            onApply={(name, value) => updateStageAt(idx, { name, value })}
                             onRemove={() => removeStageAt(idx)}
                             draggingIndex={draggingIndex}
                             onDragStartRow={handleDragStartRow}
