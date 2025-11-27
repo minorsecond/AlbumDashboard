@@ -151,6 +151,9 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
                         value={Number(val) || 0}
                         onChange={(e) => setVal(e.target.value)}
                         className="w-full"
+                        // Make sure slider drags don't accidentally start any HTML5 drag on parents
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onDragStart={(e) => e.preventDefault()}
                     />
                 </div>
                 <div className="flex gap-2 justify-end">
@@ -357,7 +360,7 @@ function Header({ targetISO, setTargetISO, songs, albumTitle, setAlbumTitle }) {
 }
 
 /**
- * StageRow — drag-to-reorder with live reshuffle.
+ * StageRow — drag-to-reorder with a small grab handle to avoid conflicts.
  */
 function StageRow({
                       stage,
@@ -368,38 +371,40 @@ function StageRow({
                       draggingIndex,
                       onDragStartRow,
                       onDragEnterRow,
-                      onDragEndRow,
                   }) {
     const [promptOpen, setPromptOpen] = useState(false);
 
     const handleDragStart = () => {
-        if (onDragStartRow) onDragStartRow(index);
+        onDragStartRow?.(index);
     };
 
     const handleDragEnter = (e) => {
         e.preventDefault();
-        if (onDragEnterRow) onDragEnterRow(index);
+        onDragEnterRow?.(index);
     };
 
     const handleDragOver = (e) => {
         e.preventDefault();
     };
 
-    const handleDragEnd = () => {
-        if (onDragEndRow) onDragEndRow();
-    };
-
     return (
         <div
-            className={`flex items-center gap-2 cursor-move ${
+            className={`flex items-center gap-2 ${
                 draggingIndex === index ? "opacity-60" : ""
             }`}
-            draggable
-            onDragStart={handleDragStart}
-            onDragEnter={handleDragEnter}
-            onDragOver={handleDragOver}
-            onDragEnd={handleDragEnd}
         >
+            {/* Drag handle only */}
+            <div
+                className="shrink-0 w-4 h-4 flex items-center justify-center text-neutral-500 cursor-grab active:cursor-grabbing select-none"
+                draggable
+                onDragStart={handleDragStart}
+                onDragEnter={handleDragEnter}
+                onDragOver={handleDragOver}
+                title="Drag to reorder"
+            >
+                ⋮⋮
+            </div>
+
             <div className="flex-1">
                 <ProgressBar
                     value={stage.value}
@@ -409,6 +414,7 @@ function StageRow({
                     height={stageRowHeight}
                 />
             </div>
+
             <button
                 className="shrink-0 w-6 h-3 flex items-center justify-center rounded bg-neutral-800 hover:bg-neutral-700 text-xs"
                 onClick={onRemove}
@@ -424,7 +430,6 @@ function StageRow({
                     onClose={(res) => {
                         setPromptOpen(false);
                         if (!res) return;
-                        // single commit with both name & value
                         onApply(res.name, res.value);
                     }}
                 />
@@ -478,9 +483,16 @@ function SongCard({ song, onUpdate, onZoom }) {
         setDraggingIndex(index);
     };
 
-    const handleDragEndRow = () => {
-        setDraggingIndex(null);
-    };
+    // Clear highlight when drag finishes anywhere
+    useEffect(() => {
+        const clear = () => setDraggingIndex(null);
+        window.addEventListener("mouseup", clear);
+        window.addEventListener("dragend", clear);
+        return () => {
+            window.removeEventListener("mouseup", clear);
+            window.removeEventListener("dragend", clear);
+        };
+    }, []);
 
     return (
         <div className="bg-neutral-900 border border-neutral-800 ... h-[232px] w-full max-w-sm">
@@ -521,7 +533,6 @@ function SongCard({ song, onUpdate, onZoom }) {
                             draggingIndex={draggingIndex}
                             onDragStartRow={handleDragStartRow}
                             onDragEnterRow={handleDragEnterRow}
-                            onDragEndRow={handleDragEndRow}
                         />
                     ))}
                 </div>
@@ -585,9 +596,15 @@ function SongDetail({ song, onUpdate, onBack }) {
         setDraggingIndex(index);
     };
 
-    const handleDragEndRow = () => {
-        setDraggingIndex(null);
-    };
+    useEffect(() => {
+        const clear = () => setDraggingIndex(null);
+        window.addEventListener("mouseup", clear);
+        window.addEventListener("dragend", clear);
+        return () => {
+            window.removeEventListener("mouseup", clear);
+            window.removeEventListener("dragend", clear);
+        };
+    }, []);
 
     return (
         <div className="h-screen w-screen bg-black flex items-center justify-center">
@@ -632,7 +649,6 @@ function SongDetail({ song, onUpdate, onBack }) {
                                 draggingIndex={draggingIndex}
                                 onDragStartRow={handleDragStartRow}
                                 onDragEnterRow={handleDragEnterRow}
-                                onDragEndRow={handleDragEndRow}
                             />
                         ))}
                     </div>
