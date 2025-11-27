@@ -82,7 +82,10 @@ function ProgressBar({ value, editable = false, onClick, height = "h-4", label }
                 onClick={editable ? onClick : undefined}
                 title={editable ? "Click to edit" : undefined}
             >
-                <div className={`h-full ${barColor}`} style={{ width: `${pct}%` }} />
+                <div
+                    className={`h-full ${barColor} transition-[width] duration-200 ease-out`}
+                    style={{ width: `${pct}%` }}
+                />
                 {label && (
                     <div className="absolute inset-0 flex items-center justify-center text-[11px] sm:text-sm font-medium text-white/90">
                         {label}
