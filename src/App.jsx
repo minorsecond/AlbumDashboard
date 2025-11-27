@@ -467,7 +467,14 @@ function StageRow({
     );
 }
 
-function SongCard({ song, onUpdate, onZoom }) {
+function SongCard({
+                      song,
+                      onUpdate,
+                      onZoom,
+                      onDragStartCard,
+                      onDragEnterCard,
+                      isDragging,
+                  }) {
     const avg = songAverage(song);
 
     const cardBorderClass =
@@ -540,9 +547,28 @@ function SongCard({ song, onUpdate, onZoom }) {
 
     return (
         <div
-            className={`bg-neutral-900 border ${cardBorderClass} rounded-xl h-[232px] w-full max-w-sm px-3 pt-2 pb-2 transition-all duration-200 hover:-translate-y-0.5 hover:border-neutral-400 flex flex-col`}
+            className={`bg-neutral-900 border ${cardBorderClass} rounded-xl h-[232px] w-full max-w-sm px-3 pt-2 pb-2 transition-all duration-200 hover:-translate-y-0.5 hover:border-neutral-400 flex flex-col ${
+                isDragging ? "opacity-60" : ""
+            }`}
         >
-            <div className="flex items-center justify-between gap-2 mb-1">
+            <div
+                className="flex items-center justify-between gap-2 mb-1"
+                draggable
+                onDragStart={(e) => {
+                    if (e.dataTransfer) {
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", String(song.id));
+                    }
+                    onDragStartCard?.();
+                }}
+                onDragEnter={(e) => {
+                    e.preventDefault(); // allow drop targets
+                    onDragEnterCard?.();
+                }}
+                onDragOver={(e) => {
+                    e.preventDefault();
+                }}
+            >
                 <EditableText
                     text={song.title}
                     onSubmit={(t) => onUpdate({ ...song, title: t })}
@@ -792,6 +818,43 @@ export default function App() {
         return DEFAULT_SONGS.length;
     });
 
+    const [draggingSongIndex, setDraggingSongIndex] = useState(null);
+
+    const handleSongDragStart = (index) => {
+        setDraggingSongIndex(index);
+    };
+
+    const handleSongDragEnter = (index) => {
+        // Don't do anything if we're not dragging or hovering the same card
+        if (draggingSongIndex === null || draggingSongIndex === index) return;
+
+        setSongs((prevSongs) => {
+            const updated = [...prevSongs];
+
+            // We only reorder within the visible portion (0..songCount-1)
+            const from = draggingSongIndex;
+            const to = index;
+
+            const [moved] = updated.splice(from, 1);
+            updated.splice(to, 0, moved);
+
+            return updated;
+        });
+
+        // Update the "current" dragging index to the new position
+        setDraggingSongIndex(index);
+    };
+
+    useEffect(() => {
+        const clear = () => setDraggingSongIndex(null);
+        window.addEventListener("dragend", clear);
+        window.addEventListener("drop", clear);
+        return () => {
+            window.removeEventListener("dragend", clear);
+            window.removeEventListener("drop", clear);
+        };
+    }, []);
+
     // Clamp songCount to the current songs length whenever songs change (e.g. import)
     useEffect(() => {
         setSongCount((current) => {
@@ -892,12 +955,15 @@ export default function App() {
 
                     <div className="px-4 pb-4 h-[calc(100vh-140px)] overflow-auto">
                         <div className="grid gap-3 justify-items-stretch xl:grid-cols-5 lg:grid-cols-4 md:grid-cols-3 sm:grid-cols-2 grid-cols-1">
-                            {visibleSongs.map((song) => (
+                            {visibleSongs.map((song, index) => (
                                 <SongCard
                                     key={song.id}
                                     song={song}
                                     onUpdate={updateSong}
                                     onZoom={(id) => (window.location.hash = `#song/${id}`)}
+                                    onDragStartCard={() => handleSongDragStart(index)}
+                                    onDragEnterCard={() => handleSongDragEnter(index)}
+                                    isDragging={draggingSongIndex === index}
                                 />
                             ))}
                         </div>
