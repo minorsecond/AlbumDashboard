@@ -11,6 +11,10 @@ import React, { useEffect, useMemo, useState } from "react";
  * - No max stage count; scroll appears inside card if too many
  * - “+” only for Add Bit button
  * - Zoom view centers a single song on a pure black background; UI is the same but enlarged
+ *
+ * Album Progress Dashboard - v4
+ * Changes in this pass:
+ * - Fix some screen size issues
  */
 
 const DEFAULT_STAGE_NAMES = [
@@ -265,7 +269,7 @@ function eligibleCount(songs, threshold = 75) {
   return [...songs].filter(s => songAverage(s) >= threshold).length;
 }
 
-function Header({ targetISO, setTargetISO, songs, albumTitle, setAlbumTitle, albumSize }) {
+function Header({ targetISO, setTargetISO, songs, albumTitle, setAlbumTitle }) {
   const { days, hours, minutes, seconds } = useCountdown(targetISO);
   const [editingDate, setEditingDate] = useState(false);
 
@@ -279,10 +283,10 @@ function Header({ targetISO, setTargetISO, songs, albumTitle, setAlbumTitle, alb
           placeholder="Album Title"
         />
       </div>
-
-      <div className="text-2xl font-black tracking-wider">
-          {eligibleCount(songs, 75)}/{albumSize}
-      </div>
+	  
+	  <div className="text-2xl font-black tracking-wider">
+	  {eligibleCount(songs, 75)}/20
+	  </div>
 
       <div className="flex items-center gap-3 text-right">
         {editingDate ? (
@@ -360,7 +364,7 @@ function SongCard({ song, onUpdate, onZoom }) {
   const addStage = () => onUpdate({ ...song, stages: [...song.stages, { name: `Stage ${song.stages.length + 1}`, value: 0 }] });
 
   return (
-		   <div className="bg-neutral-900 border border-neutral-800 rounded-2xl shadow-sm p-2 flex flex-col gap-2 h-[232px] w-[376px]">
+                   <div className="bg-neutral-900 border border-neutral-800 ... h-[232px] w-full max-w-sm">
 		  <div className="flex items-center justify-between gap-2">
 			<EditableText
 			  text={song.title}
@@ -574,8 +578,7 @@ export default function App() {
 	  }, [albumTitle]);
 	  
   return (
-    <div className="h-screen w-full overflow-hidden bg-neutral-950 text-neutral-100">
-      
+    <div className="min-h-screen w-full bg-neutral-950 text-neutral-100 overflow-x-auto">
 
       {currentSong ? (
 		  <SongDetail
@@ -622,20 +625,20 @@ export default function App() {
                 </label>
             </div>
 
-          <div className="px-4 pb-4 h-[calc(100vh-140px)] overflow-hidden">
-              <div className="grid grid-cols-5 gap-1 justify-items-center">
-                  {visibleSongs.map((song) => (
-                      <SongCard
-                          key={song.id}
-                          song={song}
-                          onUpdate={updateSong}
-                          onZoom={(id) => (window.location.hash = `#song/${id}`)}
-                      />
-                  ))}
-              </div>
-          </div>
-          </>
-      )}
+			<div className="px-4 pb-4 h-[calc(100vh-140px)] overflow-auto">
+                <div className="grid gap-3 justify-items-stretch xl:grid-cols-5 lg:grid-cols-4 md:grid-cols-3 sm:grid-cols-2 grid-cols-1">
+				{visibleSongs.map((song) => (
+				  <SongCard
+					key={song.id}
+					song={song}
+					onUpdate={updateSong}
+					onZoom={(id) => (window.location.hash = `#song/${id}`)}
+				  />
+				))}
+			  </div>
+			</div>
+		  </>
+		)}
     </div>
   );
 }
