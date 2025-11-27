@@ -399,7 +399,8 @@ function StageRow({
         >
             {/* Drag handle only */}
             <div
-                className="shrink-0 w-4 h-4 flex items-center justify-center text-neutral-500 cursor-grab active:cursor-grabbing select-none"
+                className="shrink-0 w-4 h-4 flex items-center justify-center text-neutral-500
+                cursor-grab active:cursor-grabbing select-none hover:text-neutral-300"
                 draggable
                 onDragStart={handleDragStart}
                 onDragEnter={handleDragEnter}
