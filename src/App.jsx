@@ -16,7 +16,11 @@ import { createPortal } from "react-dom";
  * Album Progress Dashboard - v4
  * Changes in this pass:
  * - Fix some screen size issues
- * - Reorderable song cards
+ *
+ * Album Progress Dashboard - v5
+ * Changes in this pass:
+ * - Persist state to a SQLite backend via /api/state
+ * - Keep localStorage as a backup
  */
 
 const DEFAULT_STAGE_NAMES = [
@@ -28,7 +32,7 @@ const DEFAULT_STAGE_NAMES = [
     "Mix",
 ];
 
-/* huge number because some punk albums have lots of very short tunes */
+/* huge number because some punk albums lots of very short tunes */
 const MAX_SONGS = 35;
 
 const DEFAULT_SONGS = Array.from({ length: MAX_SONGS }).map((_, i) => ({
@@ -38,19 +42,15 @@ const DEFAULT_SONGS = Array.from({ length: MAX_SONGS }).map((_, i) => ({
 }));
 
 const STORAGE_KEY = "albumProgress_v3";
+const DEFAULT_TARGET_ISO = new Date("2026-08-01T00:00:00").toISOString();
 
 function useHashRoute() {
-    const [hash, setHash] = useState(() =>
-        typeof window !== "undefined" ? window.location.hash : "",
-    );
-
+    const [hash, setHash] = useState(() => window.location.hash);
     useEffect(() => {
-        if (typeof window === "undefined") return;
         const onHash = () => setHash(window.location.hash);
         window.addEventListener("hashchange", onHash);
         return () => window.removeEventListener("hashchange", onHash);
     }, []);
-
     return hash;
 }
 
@@ -75,8 +75,7 @@ function useCountdown(targetISO) {
     return formatDHMS(remaining);
 }
 
-// Clamp a % value to [0, 100]
-const clampPercent = (v) => Math.min(100, Math.max(0, v));
+const clamp01 = (v) => Math.min(100, Math.max(0, v));
 
 function ProgressBar({
                          value,
@@ -85,7 +84,7 @@ function ProgressBar({
                          height = "h-4",
                          label,
                      }) {
-    const pct = clampPercent(value);
+    const pct = clamp01(value);
     const barColor = pct >= 100 ? "bg-emerald-700" : "bg-amber-700";
 
     const baseTitle = label ? `${label}: ${pct}%` : `${pct}%`;
@@ -156,7 +155,7 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
     const handleSliderChange = (e) => {
         const raw = Number(e.target.value) || 0;
         const snapped = Math.round(raw / 5) * 5; // 5% increments
-        setVal(String(clampPercent(snapped)));
+        setVal(String(clamp01(snapped)));
     };
 
     const content = (
@@ -175,7 +174,7 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
 
                 <div className="space-y-2">
                     <label className="text-sm text-neutral-300">
-                        Progress: {clampPercent(Number(val) || 0)}%
+                        Progress: {clamp01(Number(val) || 0)}%
                     </label>
                     <input
                         type="range"
@@ -202,7 +201,7 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
                         onClick={() =>
                             onClose({
                                 name: name.trim() || initialName,
-                                value: clampPercent(Number(val) || 0),
+                                value: clamp01(Number(val) || 0),
                             })
                         }
                     >
@@ -213,7 +212,6 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
         </div>
     );
 
-    // In SSR or very early render, `document` might not exist.
     if (typeof document === "undefined") {
         return content;
     }
@@ -225,7 +223,7 @@ function ExportImport({ songs, albumTitle }) {
     const exportJSON = async () => {
         const data = JSON.stringify({ songs, albumTitle }, null, 2);
 
-        if (typeof window !== "undefined" && "showSaveFilePicker" in window) {
+        if ("showSaveFilePicker" in window) {
             try {
                 const handle = await window.showSaveFilePicker({
                     suggestedName: "album_dashboard.json",
@@ -256,7 +254,7 @@ function ExportImport({ songs, albumTitle }) {
     };
 
     const importJSON = async () => {
-        if (typeof window !== "undefined" && "showOpenFilePicker" in window) {
+        if ("showOpenFilePicker" in window) {
             try {
                 const [handle] = await window.showOpenFilePicker({
                     types: [
@@ -267,7 +265,7 @@ function ExportImport({ songs, albumTitle }) {
                 const file = await handle.getFile();
                 const txt = await file.text();
                 const data = JSON.parse(txt);
-                window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
                 window.location.reload();
                 return;
             } catch (e) {
@@ -286,7 +284,7 @@ function ExportImport({ songs, albumTitle }) {
             file.text().then((txt) => {
                 try {
                     const data = JSON.parse(txt);
-                    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
                     window.location.reload();
                 } catch {
                     alert("Invalid JSON file");
@@ -298,10 +296,8 @@ function ExportImport({ songs, albumTitle }) {
 
     const resetData = () => {
         if (confirm("Reset all data to defaults?")) {
-            if (typeof window !== "undefined") {
-                window.localStorage.removeItem(STORAGE_KEY);
-                window.location.reload();
-            }
+            localStorage.removeItem(STORAGE_KEY);
+            window.location.reload();
         }
     };
     return (
@@ -330,10 +326,7 @@ function ExportImport({ songs, albumTitle }) {
 
 function songAverage(song) {
     if (!song.stages?.length) return 0;
-    const sum = song.stages.reduce(
-        (a, s) => a + clampPercent(s.value || 0),
-        0,
-    );
+    const sum = song.stages.reduce((a, s) => a + clamp01(s.value || 0), 0);
     return Math.round((100 * sum) / (song.stages.length * 100));
 }
 
@@ -428,7 +421,6 @@ function StageRow({
                       draggingIndex,
                       onDragStartRow,
                       onDragEnterRow,
-                      onDragEndRow,
                   }) {
     const [promptOpen, setPromptOpen] = useState(false);
 
@@ -445,10 +437,6 @@ function StageRow({
         e.preventDefault();
     };
 
-    const handleDragEnd = () => {
-        onDragEndRow?.();
-    };
-
     return (
         <div
             className={`flex items-center gap-2 ${
@@ -463,7 +451,6 @@ function StageRow({
                 onDragStart={handleDragStart}
                 onDragEnter={handleDragEnter}
                 onDragOver={handleDragOver}
-                onDragEnd={handleDragEnd}
                 title="Drag to reorder"
             >
                 ⋮⋮
@@ -508,7 +495,6 @@ function SongCard({
                       onZoom,
                       onDragStartCard,
                       onDragEnterCard,
-                      onDragEndCard,
                       isDragging,
                   }) {
     const avg = songAverage(song);
@@ -564,9 +550,15 @@ function SongCard({
         setDraggingIndex(index);
     };
 
-    const handleDragEndRow = () => {
-        setDraggingIndex(null);
-    };
+    useEffect(() => {
+        const clear = () => setDraggingIndex(null);
+        window.addEventListener("dragend", clear);
+        window.addEventListener("drop", clear);
+        return () => {
+            window.removeEventListener("dragend", clear);
+            window.removeEventListener("drop", clear);
+        };
+    }, []);
 
     const resetStages = () =>
         onUpdate({
@@ -586,34 +578,24 @@ function SongCard({
                 isDragging ? "opacity-60" : ""
             }`}
         >
-            <div className="flex items-center justify-between gap-2 mb-1">
-                {/* Card drag handle */}
-                <div
-                    className="mr-1 shrink-0 w-4 h-4 flex items-center justify-center text-neutral-500
-          cursor-grab active:cursor-grabbing select-none hover:text-neutral-300"
-                    draggable
-                    onDragStart={(e) => {
-                        if (e.dataTransfer) {
-                            e.dataTransfer.effectAllowed = "move";
-                            e.dataTransfer.setData("text/plain", String(song.id));
-                        }
-                        onDragStartCard?.(song.id);
-                    }}
-                    onDragEnter={(e) => {
-                        e.preventDefault();
-                        onDragEnterCard?.(song.id);
-                    }}
-                    onDragOver={(e) => {
-                        e.preventDefault();
-                    }}
-                    onDragEnd={() => {
-                        onDragEndCard?.();
-                    }}
-                    title="Drag to reorder track"
-                >
-                    ⋮⋮
-                </div>
-
+            <div
+                className="flex items-center justify-between gap-2 mb-1"
+                draggable
+                onDragStart={(e) => {
+                    if (e.dataTransfer) {
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", String(song.id));
+                    }
+                    onDragStartCard?.();
+                }}
+                onDragEnter={(e) => {
+                    e.preventDefault();
+                    onDragEnterCard?.();
+                }}
+                onDragOver={(e) => {
+                    e.preventDefault();
+                }}
+            >
                 <EditableText
                     text={song.title}
                     onSubmit={(t) => onUpdate({ ...song, title: t })}
@@ -659,7 +641,6 @@ function SongCard({
                             draggingIndex={draggingIndex}
                             onDragStartRow={handleDragStartRow}
                             onDragEnterRow={handleDragEnterRow}
-                            onDragEndRow={handleDragEndRow}
                         />
                     ))}
                 </div>
@@ -737,9 +718,15 @@ function SongDetail({ song, onUpdate, onBack }) {
         setDraggingIndex(index);
     };
 
-    const handleDragEndRow = () => {
-        setDraggingIndex(null);
-    };
+    useEffect(() => {
+        const clear = () => setDraggingIndex(null);
+        window.addEventListener("dragend", clear);
+        window.addEventListener("drop", clear);
+        return () => {
+            window.removeEventListener("dragend", clear);
+            window.removeEventListener("drop", clear);
+        };
+    }, []);
 
     return (
         <div className="h-screen w-screen bg-black flex items-center justify-center">
@@ -781,7 +768,6 @@ function SongDetail({ song, onUpdate, onBack }) {
                                 draggingIndex={draggingIndex}
                                 onDragStartRow={handleDragStartRow}
                                 onDragEnterRow={handleDragEnterRow}
-                                onDragEndRow={handleDragEndRow}
                             />
                         ))}
                     </div>
@@ -818,10 +804,10 @@ function fromLocalDatetimeInputValue(value) {
 }
 
 export default function App() {
+    // ---- LocalStorage initial snapshot (fast startup / offline fallback) ----
     const stored = useMemo(() => {
-        if (typeof window === "undefined") return {};
         try {
-            return JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "{}");
+            return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
         } catch {
             return {};
         }
@@ -852,7 +838,7 @@ export default function App() {
         () => stored.albumTitle || "Album Dashboard",
     );
     const [targetISO, setTargetISO] = useState(
-        () => stored.targetISO || new Date("2026-08-01T00:00:00").toISOString(),
+        () => stored.targetISO || DEFAULT_TARGET_ISO,
     );
 
     // How many tracks are actually on this album (just visibility/logic, not storage)
@@ -867,41 +853,77 @@ export default function App() {
         return DEFAULT_SONGS.length;
     });
 
-    // Which song card (by id) is currently being dragged
-    const [draggingSongId, setDraggingSongId] = useState(null);
+    const [draggingSongIndex, setDraggingSongIndex] = useState(null);
+    const [backendLoaded, setBackendLoaded] = useState(false);
 
-    const handleSongDragStart = (songId) => {
-        setDraggingSongId(songId);
+    // ---- Hydrate from backend (SQLite) on mount ----
+    useEffect(() => {
+        let isMounted = true;
+
+        fetch("/api/state")
+            .then((res) => {
+                if (!res.ok) throw new Error("Non-OK response");
+                return res.json();
+            })
+            .then((data) => {
+                if (!isMounted || !data) return;
+
+                const migrated = migrateSongs(data.songs || DEFAULT_SONGS);
+                setSongs(migrated);
+                setAlbumTitle(data.albumTitle || "Album Dashboard");
+                setTargetISO(data.targetISO || DEFAULT_TARGET_ISO);
+
+                const savedCount = Number(data.songCount);
+                if (Number.isFinite(savedCount) && savedCount > 0) {
+                    setSongCount(savedCount);
+                } else {
+                    setSongCount(migrated.length || DEFAULT_SONGS.length);
+                }
+            })
+            .catch(() => {
+                // ignore; fallback to local snapshot / defaults
+            })
+            .finally(() => {
+                if (isMounted) setBackendLoaded(true);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const handleSongDragStart = (index) => {
+        setDraggingSongIndex(index);
     };
 
-    const handleSongDragEnter = (overId) => {
-        if (!draggingSongId || draggingSongId === overId) return;
+    const handleSongDragEnter = (index) => {
+        if (draggingSongIndex === null || draggingSongIndex === index) return;
 
         setSongs((prevSongs) => {
             const updated = [...prevSongs];
 
-            const fromIndex = updated.findIndex((s) => s.id === draggingSongId);
-            const toIndex = updated.findIndex((s) => s.id === overId);
+            const from = draggingSongIndex;
+            const to = index;
 
-            if (fromIndex === -1 || toIndex === -1) {
-                return prevSongs;
-            }
-
-            // only reorder if both are in the visible range (0..songCount-1)
-            if (fromIndex >= songCount || toIndex >= songCount) {
-                return prevSongs;
-            }
-
-            const [moved] = updated.splice(fromIndex, 1);
-            updated.splice(toIndex, 0, moved);
+            const [moved] = updated.splice(from, 1);
+            updated.splice(to, 0, moved);
 
             return updated;
         });
+
+        setDraggingSongIndex(index);
     };
 
-    const handleSongDragEnd = () => {
-        setDraggingSongId(null);
-    };
+    useEffect(() => {
+        const clear = () => setDraggingSongIndex(null);
+        window.addEventListener("dragend", clear);
+        window.addEventListener("drop", clear);
+        return () => {
+            window.removeEventListener("dragend", clear);
+            window.removeEventListener("drop", clear);
+        };
+    }, []);
 
     // Clamp songCount to the current songs length whenever songs change (e.g. import)
     useEffect(() => {
@@ -940,26 +962,47 @@ export default function App() {
         [songs, songCount],
     );
 
+    // ---- Persist to localStorage + backend whenever state changes ----
     useEffect(() => {
-        if (typeof window === "undefined") return;
-        window.localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify({ songs, targetISO, albumTitle, songCount }),
-        );
+        const snapshot = { songs, targetISO, albumTitle, songCount };
+
+        // localStorage backup
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+
+        // Debounced backend save
+        const controller = new AbortController();
+        const timeout = setTimeout(() => {
+            fetch("/api/state", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(snapshot),
+                signal: controller.signal,
+            }).catch(() => {
+                // swallow errors; localStorage still has a backup
+            });
+        }, 300);
+
+        return () => {
+            clearTimeout(timeout);
+            controller.abort();
+        };
     }, [songs, targetISO, albumTitle, songCount]);
 
     const updateSong = (updated) =>
         setSongs((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
 
     useEffect(() => {
-        if (typeof document === "undefined") return;
-        const trimmed = albumTitle?.trim();
-        if (trimmed) {
-            document.title = `${trimmed} Planning`;
-        } else {
-            document.title = "Album Dashboard";
-        }
+        document.title = albumTitle + " " + "Planning" || "Album Dashboard";
     }, [albumTitle]);
+
+    if (!backendLoaded) {
+        // Optional: quick loading state while we attempt to hydrate from backend
+        return (
+            <div className="min-h-screen w-full bg-neutral-950 text-neutral-100 flex items-center justify-center">
+                <div className="text-sm text-neutral-400">Loading dashboard…</div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen w-full bg-neutral-950 text-neutral-100 overflow-x-auto">
@@ -967,11 +1010,7 @@ export default function App() {
                 <SongDetail
                     song={currentSong}
                     onUpdate={updateSong}
-                    onBack={() => {
-                        if (typeof window !== "undefined") {
-                            window.location.hash = "";
-                        }
-                    }}
+                    onBack={() => (window.location.hash = "")}
                 />
             ) : (
                 <>
@@ -990,7 +1029,7 @@ export default function App() {
                         <span
                             className="absolute inset-0 text-white font-bold"
                             style={{
-                                lineHeight: "36px", // match h-9 (36px)
+                                lineHeight: "36px",
                                 textAlign: "center",
                             }}
                         >
@@ -1014,20 +1053,15 @@ export default function App() {
 
                     <div className="px-4 pb-4 h-[calc(100vh-140px)] overflow-auto">
                         <div className="grid gap-3 justify-items-stretch xl:grid-cols-5 lg:grid-cols-4 md:grid-cols-3 sm:grid-cols-2 grid-cols-1">
-                            {visibleSongs.map((song) => (
+                            {visibleSongs.map((song, index) => (
                                 <SongCard
                                     key={song.id}
                                     song={song}
                                     onUpdate={updateSong}
-                                    onZoom={(id) => {
-                                        if (typeof window !== "undefined") {
-                                            window.location.hash = `#song/${id}`;
-                                        }
-                                    }}
-                                    onDragStartCard={handleSongDragStart}
-                                    onDragEnterCard={handleSongDragEnter}
-                                    onDragEndCard={handleSongDragEnd}
-                                    isDragging={draggingSongId === song.id}
+                                    onZoom={(id) => (window.location.hash = `#song/${id}`)}
+                                    onDragStartCard={() => handleSongDragStart(index)}
+                                    onDragEnterCard={() => handleSongDragEnter(index)}
+                                    isDragging={draggingSongIndex === index}
                                 />
                             ))}
                         </div>
