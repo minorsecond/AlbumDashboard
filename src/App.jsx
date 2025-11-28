@@ -446,12 +446,25 @@ function Header({
                     readyThreshold = 75,
                     songCount,
                     onUndo,
+                    hasTemplate,
+                    templateSourceTitle,
+                    onClearTemplate,
                 }) {
     const { days, hours, minutes, seconds } = useCountdown(targetISO);
     const [editingDate, setEditingDate] = useState(false);
 
     return (
-        <div className="w-full flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 p-4">
+        <div
+            className="
+        w-full
+        grid gap-4 p-4
+        items-start lg:items-center
+        grid-cols-1
+        lg:grid-cols-[minmax(0,1.5fr)_auto_minmax(0,260px)_minmax(0,1.7fr)]
+        /*                ^^^^^^^^^^^^^^ column 3 has fixed max width */
+      "
+        >
+            {/* Col 1: Album title */}
             <div className="flex items-center gap-4">
                 <EditableText
                     text={albumTitle}
@@ -461,6 +474,7 @@ function Header({
                 />
             </div>
 
+            {/* Col 2: 1/9 widget */}
             <div className="flex flex-col items-center">
                 <div className="text-2xl font-black tracking-wider tabular-nums">
                     {eligibleCount(songs, readyThreshold)}/{albumSize}
@@ -470,7 +484,26 @@ function Header({
                 </div>
             </div>
 
-            <div className="flex items-center gap-3 text-right">
+            {/* Col 3: template pill slot (column width fixed, pill stretches up to 260px) */}
+            <div className="flex justify-center">
+                {hasTemplate && (
+                    <button
+                        className="
+              px-3 py-1.5 rounded-full
+              text-[10px] uppercase tracking-widest
+              bg-emerald-900/40 border border-emerald-600 text-emerald-100
+              max-w-full truncate
+            "
+                        onClick={onClearTemplate}
+                        title="Clear copied track template (disables Paste)"
+                    >
+                        Template: {templateSourceTitle || "Copied"} ✕
+                    </button>
+                )}
+            </div>
+
+            {/* Col 4: countdown + export/import/reset/undo */}
+            <div className="flex items-center justify-end gap-3 text-right">
                 {editingDate ? (
                     <input
                         type="datetime-local"
@@ -501,6 +534,7 @@ function Header({
                         </div>
                     </div>
                 )}
+
                 <ExportImport
                     songs={songs}
                     albumTitle={albumTitle}
@@ -687,6 +721,7 @@ function SongCard({
                 isDragging ? "opacity-60" : ""
             }`}
         >
+            {/* Header: handle + title, badge + zoom */}
             <div
                 className="flex items-center justify-between gap-2 mb-1"
                 onDragEnter={(e) => {
@@ -724,51 +759,13 @@ function SongCard({
                 <div className="flex items-center gap-2">
                     {avg >= 100 ? (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-800 text-emerald-100 uppercase tracking-widest">
-                            Done
-                        </span>
+              FINAL
+            </span>
                     ) : avg >= 75 ? (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-800 text-amber-100 uppercase tracking-widest">
-                            Final
-                        </span>
+              Final
+            </span>
                     ) : null}
-
-                    {/* Copy current card as template (stages, 0% progress) */}
-                    <button
-                        className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
-                        onClick={() => onCopyTemplate?.(song.id)}
-                        title="Copy this track as a template"
-                    >
-                        Copy
-                    </button>
-
-                    {/* Paste template onto this card */}
-                    <button
-                        className={`text-xs px-2 py-1 rounded ${
-                            canPasteTemplate
-                                ? "bg-neutral-800 hover:bg-neutral-700"
-                                : "bg-neutral-900 text-neutral-600 cursor-not-allowed"
-                        }`}
-                        onClick={() =>
-                            canPasteTemplate && onPasteTemplate?.(song.id)
-                        }
-                        disabled={!canPasteTemplate}
-                        title={
-                            canPasteTemplate
-                                ? "Paste template onto this track"
-                                : "Copy a track first"
-                        }
-                    >
-                        Paste
-                    </button>
-
-                    {/* Duplicate this card as a new track */}
-                    <button
-                        className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
-                        onClick={() => onDuplicate?.(song.id)}
-                        title="Duplicate this track as a new card"
-                    >
-                        Dup
-                    </button>
 
                     <button
                         className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
@@ -780,6 +777,7 @@ function SongCard({
                 </div>
             </div>
 
+            {/* Track progress */}
             <div className="relative mb-2">
                 <ProgressBar value={avg} height="h-5" />
                 <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-sm">
@@ -787,6 +785,7 @@ function SongCard({
         </span>
             </div>
 
+            {/* Stage list */}
             <div className="flex-1 overflow-auto pr-1 pt-1">
                 <div className="flex flex-col gap-1">
                     {song.stages.map((stg, idx) => (
@@ -804,7 +803,8 @@ function SongCard({
                 </div>
             </div>
 
-            <div className="mt-2 flex items-center justify-between text-[11px]">
+            {/* Bottom toolbar: left = stage controls, right = card actions */}
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
                 <div className="flex items-center gap-1">
                     <button
                         className="px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-700 hover:bg-neutral-800"
@@ -818,6 +818,53 @@ function SongCard({
                     >
                         100%
                     </button>
+                    <button
+                        className="w-6 h-5 flex items-center justify-center text-sm rounded bg-neutral-800 hover:bg-neutral-700"
+                        onClick={addStage}
+                        title="Add bit"
+                    >
+                        +
+                    </button>
+                </div>
+
+                <div className="flex items-center gap-1">
+                    <button
+                        className={`px-1.5 py-0.5 rounded border text-[11px] ${
+                            canPasteTemplate
+                                ? "bg-neutral-900 border-emerald-700 text-emerald-100"
+                                : "bg-neutral-900 border-neutral-700 text-neutral-200"
+                        }`}
+                        onClick={() => onCopyTemplate?.(song.id)}
+                        title="Copy this track as a template"
+                    >
+                        Copy
+                    </button>
+
+                    <button
+                        className={`px-1.5 py-0.5 rounded border text-[11px] transition-colors ${
+                            canPasteTemplate
+                                ? "bg-emerald-900 border-emerald-600 text-emerald-100 hover:bg-emerald-800 hover:border-emerald-500"
+                                : "bg-neutral-950 border-neutral-800 text-neutral-600 cursor-not-allowed"
+                        }`}
+                        onClick={() => canPasteTemplate && onPasteTemplate?.(song.id)}
+                        disabled={!canPasteTemplate}
+                        title={
+                            canPasteTemplate
+                                ? "Paste template onto this track"
+                                : "Copy a track first"
+                        }
+                    >
+                        Paste
+                    </button>
+
+                    <button
+                        className="px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-700 hover:bg-neutral-800"
+                        onClick={() => onDuplicate?.(song.id)}
+                        title="Duplicate this track as a new card"
+                    >
+                        Dup
+                    </button>
+
                     <button
                         className="px-1.5 py-0.5 rounded bg-red-900 border border-red-800 hover:bg-red-800"
                         onClick={() => {
@@ -833,13 +880,6 @@ function SongCard({
                         Del
                     </button>
                 </div>
-                <button
-                    className="w-6 h-5 flex items-center justify-center text-sm rounded bg-neutral-800 hover:bg-neutral-700"
-                    onClick={addStage}
-                    title="Add bit"
-                >
-                    +
-                </button>
             </div>
         </div>
     );
@@ -1029,6 +1069,7 @@ export default function App() {
     const [backendLoaded, setBackendLoaded] = useState(false);
 
     const [copiedTemplate, setCopiedTemplate] = useState(null); // array of stages or null
+    const [templateSourceTitle, setTemplateSourceTitle] = useState(null);
 
     // ---- Hydrate from backend (SQLite) on mount ----
     useEffect(() => {
@@ -1103,12 +1144,18 @@ export default function App() {
         const src = songs.find((s) => s.id === songId);
         if (!src) return;
 
-        // Treat stages as a template: keep names, reset progress to 0.
         const templateStages = src.stages.map((stg) => ({
             name: stg.name,
             value: 0,
         }));
+
         setCopiedTemplate(templateStages);
+        setTemplateSourceTitle(src.title);  // remember which track we copied from
+    };
+
+    const handleClearTemplate = () => {
+        setCopiedTemplate(null);
+        setTemplateSourceTitle(null);
     };
 
     const handlePasteTemplate = (songId) => {
@@ -1365,6 +1412,9 @@ export default function App() {
                         albumSize={songCount}
                         songCount={songCount}
                         onUndo={handleUndo}
+                        hasTemplate={!!copiedTemplate}
+                        templateSourceTitle={templateSourceTitle}   // <-- here
+                        onClearTemplate={handleClearTemplate}
                     />
 
                     {/* Album-wide overall progress (with % in center) */}
