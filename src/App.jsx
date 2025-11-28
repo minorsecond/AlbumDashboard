@@ -604,6 +604,7 @@ function SongCard({
                       onPasteTemplate,
                       canPasteTemplate,
                       onDuplicate,
+                      onDelete,
                   }) {
     const avg = songAverage(song);
 
@@ -816,6 +817,20 @@ function SongCard({
                         onClick={completeSong}
                     >
                         100%
+                    </button>
+                    <button
+                        className="px-1.5 py-0.5 rounded bg-red-900 border border-red-800 hover:bg-red-800"
+                        onClick={() => {
+                            if (
+                                window.confirm(
+                                    "Delete this track from the album? You can undo this from the Undo button.",
+                                )
+                            ) {
+                                onDelete?.(song.id);
+                            }
+                        }}
+                    >
+                        Del
                     </button>
                 </div>
                 <button
@@ -1145,6 +1160,46 @@ export default function App() {
         });
     };
 
+    const handleDeleteSong = (songId) => {
+        setSongs((prevSongs) => {
+            // Keep at least one song; if there’s only one, “delete” = reset it.
+            if (prevSongs.length <= 1) {
+                const only = prevSongs[0];
+                if (!only) {
+                    return [
+                        {
+                            id: 1,
+                            title: "Song 1",
+                            stages: DEFAULT_STAGE_NAMES.map((name) => ({
+                                name,
+                                value: 0,
+                            })),
+                        },
+                    ];
+                }
+
+                return [
+                    {
+                        ...only,
+                        title: "Song 1",
+                        stages: DEFAULT_STAGE_NAMES.map((name) => ({
+                            name,
+                            value: 0,
+                        })),
+                    },
+                ];
+            }
+
+            // Normal case: remove this song entirely
+            return prevSongs.filter((s) => s.id !== songId);
+        });
+
+        // Decrement album track count (useEffect will also clamp to songs.length)
+        setSongCount((current) => {
+            const next = current - 1;
+            return next < 1 ? 1 : next;
+        });
+    };
 
     // Clamp songCount to the current songs length whenever songs change (e.g. import)
     useEffect(() => {
@@ -1355,6 +1410,7 @@ export default function App() {
                                     onPasteTemplate={handlePasteTemplate}
                                     canPasteTemplate={!!copiedTemplate}
                                     onDuplicate={handleDuplicateSong}
+                                    onDelete={handleDeleteSong}
                                 />
                             ))}
                         </div>
