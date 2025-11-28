@@ -16,7 +16,11 @@ import { createPortal } from "react-dom";
  * Album Progress Dashboard - v4
  * Changes in this pass:
  * - Fix some screen size issues
- * - Reorderable song cards
+ *
+ * Album Progress Dashboard - v5
+ * Changes in this pass:
+ * - Persist state to a SQLite backend via /api/state
+ * - Keep localStorage as a backup
  */
 
 const DEFAULT_STAGE_NAMES = [
@@ -28,7 +32,7 @@ const DEFAULT_STAGE_NAMES = [
     "Mix",
 ];
 
-/* huge number because some punk albums have lots of very short tunes */
+/* huge number because some punk albums lots of very short tunes */
 const MAX_SONGS = 35;
 
 const DEFAULT_SONGS = Array.from({ length: MAX_SONGS }).map((_, i) => ({
@@ -38,19 +42,15 @@ const DEFAULT_SONGS = Array.from({ length: MAX_SONGS }).map((_, i) => ({
 }));
 
 const STORAGE_KEY = "albumProgress_v3";
+const DEFAULT_TARGET_ISO = new Date("2026-08-01T00:00:00").toISOString();
 
 function useHashRoute() {
-    const [hash, setHash] = useState(() =>
-        typeof window !== "undefined" ? window.location.hash : "",
-    );
-
+    const [hash, setHash] = useState(() => window.location.hash);
     useEffect(() => {
-        if (typeof window === "undefined") return;
         const onHash = () => setHash(window.location.hash);
         window.addEventListener("hashchange", onHash);
         return () => window.removeEventListener("hashchange", onHash);
     }, []);
-
     return hash;
 }
 
@@ -75,8 +75,7 @@ function useCountdown(targetISO) {
     return formatDHMS(remaining);
 }
 
-// Clamp a % value to [0, 100]
-const clampPercent = (v) => Math.min(100, Math.max(0, v));
+const clamp01 = (v) => Math.min(100, Math.max(0, v));
 
 function ProgressBar({
                          value,
@@ -85,7 +84,7 @@ function ProgressBar({
                          height = "h-4",
                          label,
                      }) {
-    const pct = clampPercent(value);
+    const pct = clamp01(value);
     const barColor = pct >= 100 ? "bg-emerald-700" : "bg-amber-700";
 
     const baseTitle = label ? `${label}: ${pct}%` : `${pct}%`;
@@ -156,7 +155,7 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
     const handleSliderChange = (e) => {
         const raw = Number(e.target.value) || 0;
         const snapped = Math.round(raw / 5) * 5; // 5% increments
-        setVal(String(clampPercent(snapped)));
+        setVal(String(clamp01(snapped)));
     };
 
     const content = (
@@ -175,7 +174,7 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
 
                 <div className="space-y-2">
                     <label className="text-sm text-neutral-300">
-                        Progress: {clampPercent(Number(val) || 0)}%
+                        Progress: {clamp01(Number(val) || 0)}%
                     </label>
                     <input
                         type="range"
@@ -202,7 +201,7 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
                         onClick={() =>
                             onClose({
                                 name: name.trim() || initialName,
-                                value: clampPercent(Number(val) || 0),
+                                value: clamp01(Number(val) || 0),
                             })
                         }
                     >
@@ -213,7 +212,6 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
         </div>
     );
 
-    // In SSR or very early render, `document` might not exist.
     if (typeof document === "undefined") {
         return content;
     }
@@ -221,11 +219,20 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
     return createPortal(content, document.body);
 }
 
-function ExportImport({ songs, albumTitle }) {
+function ExportImport({ songs, albumTitle, targetISO, songCount, onUndo }) {
     const exportJSON = async () => {
-        const data = JSON.stringify({ songs, albumTitle }, null, 2);
+        const data = JSON.stringify(
+            {
+                songs,
+                albumTitle,
+                targetISO,
+                songCount,
+            },
+            null,
+            2,
+        );
 
-        if (typeof window !== "undefined" && "showSaveFilePicker" in window) {
+        if ("showSaveFilePicker" in window) {
             try {
                 const handle = await window.showSaveFilePicker({
                     suggestedName: "album_dashboard.json",
@@ -241,7 +248,7 @@ function ExportImport({ songs, albumTitle }) {
                 if (e?.name === "AbortError") return;
                 console.error(e);
                 alert(
-                    "Could not save using the file picker. Falling back to download.",
+                    "Could not save using the File System Access API; falling back to download.",
                 );
             }
         }
@@ -255,8 +262,39 @@ function ExportImport({ songs, albumTitle }) {
         URL.revokeObjectURL(url);
     };
 
+    const buildSnapshotFromData = (data) => {
+        const importedSongs =
+            Array.isArray(data.songs) && data.songs.length ? data.songs : songs;
+
+        const importedTitle =
+            typeof data.albumTitle === "string" && data.albumTitle.trim().length
+                ? data.albumTitle
+                : albumTitle;
+
+        const importedTargetISO =
+            typeof data.targetISO === "string" && data.targetISO
+                ? data.targetISO
+                : targetISO;
+
+        let importedSongCount = Number(data.songCount);
+        if (!Number.isFinite(importedSongCount) || importedSongCount <= 0) {
+            if (Array.isArray(data.songs) && data.songs.length) {
+                importedSongCount = data.songs.length;
+            } else {
+                importedSongCount = songCount || songs.length || DEFAULT_SONGS.length;
+            }
+        }
+
+        return {
+            songs: importedSongs,
+            albumTitle: importedTitle,
+            targetISO: importedTargetISO,
+            songCount: importedSongCount,
+        };
+    };
+
     const importJSON = async () => {
-        if (typeof window !== "undefined" && "showOpenFilePicker" in window) {
+        if ("showOpenFilePicker" in window) {
             try {
                 const [handle] = await window.showOpenFilePicker({
                     types: [
@@ -267,13 +305,28 @@ function ExportImport({ songs, albumTitle }) {
                 const file = await handle.getFile();
                 const txt = await file.text();
                 const data = JSON.parse(txt);
-                window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+                const snapshot = buildSnapshotFromData(data);
+
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+                try {
+                    await fetch("/api/state", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(snapshot),
+                    });
+                } catch (err) {
+                    console.error(err);
+                }
+
                 window.location.reload();
                 return;
             } catch (e) {
                 if (e?.name === "AbortError") return;
                 console.error(e);
-                alert("Could not open using the file picker. Falling back to upload.");
+                alert(
+                    "Could not open using the File System Access API; falling back to file input.",
+                );
             }
         }
 
@@ -283,10 +336,22 @@ function ExportImport({ songs, albumTitle }) {
         input.onchange = () => {
             const file = input.files?.[0];
             if (!file) return;
-            file.text().then((txt) => {
+            file.text().then(async (txt) => {
                 try {
                     const data = JSON.parse(txt);
-                    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+                    const snapshot = buildSnapshotFromData(data);
+
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+                    try {
+                        await fetch("/api/state", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(snapshot),
+                        });
+                    } catch (err) {
+                        console.error(err);
+                    }
+
                     window.location.reload();
                 } catch {
                     alert("Invalid JSON file");
@@ -296,14 +361,33 @@ function ExportImport({ songs, albumTitle }) {
         input.click();
     };
 
-    const resetData = () => {
-        if (confirm("Reset all data to defaults?")) {
-            if (typeof window !== "undefined") {
-                window.localStorage.removeItem(STORAGE_KEY);
-                window.location.reload();
-            }
+    const resetData = async () => {
+        if (!confirm("Reset all data to defaults?")) return;
+
+        const snapshot = {
+            songs: DEFAULT_SONGS,
+            albumTitle: "Album Dashboard",
+            targetISO: DEFAULT_TARGET_ISO,
+            songCount: DEFAULT_SONGS.length,
+        };
+
+        localStorage.removeItem(STORAGE_KEY);
+
+        try {
+            await fetch("/api/state", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(snapshot),
+            });
+        } catch (err) {
+            console.error(err);
+            // If backend is unavailable, keep defaults in localStorage so the app can still load.
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
         }
+
+        window.location.reload();
     };
+
     return (
         <div className="flex items-center gap-2">
             <button
@@ -324,16 +408,21 @@ function ExportImport({ songs, albumTitle }) {
             >
                 Reset
             </button>
+            {onUndo && (
+                <button
+                    className="px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700"
+                    onClick={onUndo}
+                >
+                    Undo
+                </button>
+            )}
         </div>
     );
 }
 
 function songAverage(song) {
     if (!song.stages?.length) return 0;
-    const sum = song.stages.reduce(
-        (a, s) => a + clampPercent(s.value || 0),
-        0,
-    );
+    const sum = song.stages.reduce((a, s) => a + clamp01(s.value || 0), 0);
     return Math.round((100 * sum) / (song.stages.length * 100));
 }
 
@@ -355,62 +444,123 @@ function Header({
                     setAlbumTitle,
                     albumSize,
                     readyThreshold = 75,
+                    songCount,
+                    onUndo,
+                    hasTemplate,
+                    templateSourceTitle,
+                    onClearTemplate,
                 }) {
     const { days, hours, minutes, seconds } = useCountdown(targetISO);
     const [editingDate, setEditingDate] = useState(false);
 
     return (
-        <div className="w-full flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 p-4">
-            <div className="flex items-center gap-4">
-                <EditableText
-                    text={albumTitle}
-                    onSubmit={setAlbumTitle}
-                    className="text-2xl font-black tracking-wider"
-                    placeholder="Album Title"
-                />
-            </div>
-
-            <div className="flex flex-col items-center">
-                <div className="text-2xl font-black tracking-wider tabular-nums">
-                    {eligibleCount(songs, readyThreshold)}/{albumSize}
-                </div>
-                <div className="text-[10px] uppercase tracking-widest text-neutral-500">
-                    Tracks ≥ {readyThreshold}% done
-                </div>
-            </div>
-
-            <div className="flex items-center gap-3 text-right">
-                {editingDate ? (
-                    <input
-                        type="datetime-local"
-                        className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1"
-                        value={toLocalDatetimeInputValue(targetISO)}
-                        onChange={(e) =>
-                            setTargetISO(fromLocalDatetimeInputValue(e.target.value))
-                        }
-                        onBlur={() => setEditingDate(false)}
-                        autoFocus
+        <div className="relative w-full px-4 pt-4 pb-4">
+            {/* Top row: left + right; center widget is overlaid separately */}
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                {/* Left: album title */}
+                <div className="flex items-center gap-4">
+                    <EditableText
+                        text={albumTitle}
+                        onSubmit={setAlbumTitle}
+                        className="text-2xl font-black tracking-wider"
+                        placeholder="Album Title"
                     />
-                ) : (
-                    <div
-                        className="cursor-pointer"
-                        onClick={() => setEditingDate(true)}
-                        title="Click to edit target deadline"
-                    >
-                        <div className="uppercase text-xs tracking-widest text-neutral-400">
-                            Time to Goal
+                </div>
+
+                {/* Right: countdown + Export/Import/Reset/Undo */}
+                <div className="flex items-center gap-3 text-right w-full lg:w-auto justify-end">
+                    {editingDate ? (
+                        <input
+                            type="datetime-local"
+                            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1"
+                            value={toLocalDatetimeInputValue(targetISO)}
+                            onChange={(e) =>
+                                setTargetISO(fromLocalDatetimeInputValue(e.target.value))
+                            }
+                            onBlur={() => setEditingDate(false)}
+                            autoFocus
+                        />
+                    ) : (
+                        <div
+                            className="cursor-pointer"
+                            onClick={() => setEditingDate(true)}
+                            title="Click to edit target deadline"
+                        >
+                            <div className="flex flex-col items-end leading-tight">
+                                <div className="uppercase text-[10px] tracking-widest text-neutral-400 mb-0.5">
+                                    Time to Goal
+                                </div>
+                                <div className="text-lg md:text-xl lg:text-2xl tabular-nums font-semibold whitespace-nowrap">
+                                    {days}d {String(hours).padStart(2, "0")}:
+                                    {String(minutes).padStart(2, "0")}:
+                                    {String(seconds).padStart(2, "0")}
+                                </div>
+                                <div className="text-[10px] text-neutral-500 mt-0.5">
+                                    Target: {new Date(targetISO).toLocaleString()}
+                                </div>
+                            </div>
                         </div>
-                        <div className="text-2xl tabular-nums font-semibold">
-                            {days}d {String(hours).padStart(2, "0")}:
-                            {String(minutes).padStart(2, "0")}:
-                            {String(seconds).padStart(2, "0")}
+                    )}
+
+                    <ExportImport
+                        songs={songs}
+                        albumTitle={albumTitle}
+                        targetISO={targetISO}
+                        songCount={songCount}
+                        onUndo={onUndo}
+                    />
+                </div>
+            </div>
+
+            {/* Center widget: 1/9 + template pill */}
+            {/* On small screens this sits in normal flow; on lg it's overlaid and doesn't move other widgets */}
+            <div className="mt-3 flex justify-center lg:mt-0 lg:absolute lg:inset-x-0 lg:top-1/2 lg:-translate-y-1/2 pointer-events-none">
+                <div className="flex flex-col items-center gap-1 pointer-events-auto">
+                    {/* 1/9 block is the centering anchor */}
+                    <div className="relative flex flex-col items-center">
+                        <div className="text-2xl font-black tracking-wider tabular-nums">
+                            {eligibleCount(songs, readyThreshold)}/{albumSize}
                         </div>
-                        <div className="text-xs text-neutral-500">
-                            Target: {new Date(targetISO).toLocaleString()}
+                        <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+                            Tracks ≥ {readyThreshold}% done
                         </div>
+
+                        {/* Desktop/tablet pill: absolutely positioned to the right of 1/9 so 1/9 never moves */}
+                        {hasTemplate && (
+                            <button
+                                className="
+                  hidden md:inline-flex
+                  absolute left-full ml-3 top-1/2 -translate-y-1/2
+                  px-3 py-1.5 rounded-full
+                  text-[10px] uppercase tracking-widest
+                  bg-emerald-900/40 border border-emerald-600 text-emerald-100
+                  max-w-[220px] truncate
+                "
+                                onClick={onClearTemplate}
+                                title="Clear copied track template (disables Paste)"
+                            >
+                                Template: {templateSourceTitle || 'Copied'} ✕
+                            </button>
+                        )}
                     </div>
-                )}
-                <ExportImport songs={songs} albumTitle={albumTitle} />
+
+                    {/* Mobile pill: stacked underneath, not absolute */}
+                    {hasTemplate && (
+                        <button
+                            className="
+                md:hidden
+                px-3 py-1.5 rounded-full
+                text-[10px] uppercase tracking-widest
+                bg-emerald-900/40 border border-emerald-600 text-emerald-100
+                max-w-full truncate
+              "
+                            onClick={onClearTemplate}
+                            title="Clear copied track template (disables Paste)"
+                        >
+                            Template: {templateSourceTitle || 'Copied'} ✕
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -428,7 +578,6 @@ function StageRow({
                       draggingIndex,
                       onDragStartRow,
                       onDragEnterRow,
-                      onDragEndRow,
                   }) {
     const [promptOpen, setPromptOpen] = useState(false);
 
@@ -445,10 +594,6 @@ function StageRow({
         e.preventDefault();
     };
 
-    const handleDragEnd = () => {
-        onDragEndRow?.();
-    };
-
     return (
         <div
             className={`flex items-center gap-2 ${
@@ -463,7 +608,6 @@ function StageRow({
                 onDragStart={handleDragStart}
                 onDragEnter={handleDragEnter}
                 onDragOver={handleDragOver}
-                onDragEnd={handleDragEnd}
                 title="Drag to reorder"
             >
                 ⋮⋮
@@ -508,8 +652,12 @@ function SongCard({
                       onZoom,
                       onDragStartCard,
                       onDragEnterCard,
-                      onDragEndCard,
                       isDragging,
+                      onCopyTemplate,
+                      onPasteTemplate,
+                      canPasteTemplate,
+                      onDuplicate,
+                      onDelete,
                   }) {
     const avg = songAverage(song);
 
@@ -564,9 +712,15 @@ function SongCard({
         setDraggingIndex(index);
     };
 
-    const handleDragEndRow = () => {
-        setDraggingIndex(null);
-    };
+    useEffect(() => {
+        const clear = () => setDraggingIndex(null);
+        window.addEventListener("dragend", clear);
+        window.addEventListener("drop", clear);
+        return () => {
+            window.removeEventListener("dragend", clear);
+            window.removeEventListener("drop", clear);
+        };
+    }, []);
 
     const resetStages = () =>
         onUpdate({
@@ -586,47 +740,49 @@ function SongCard({
                 isDragging ? "opacity-60" : ""
             }`}
         >
-            <div className="flex items-center justify-between gap-2 mb-1">
-                {/* Card drag handle */}
-                <div
-                    className="mr-1 shrink-0 w-4 h-4 flex items-center justify-center text-neutral-500
-          cursor-grab active:cursor-grabbing select-none hover:text-neutral-300"
-                    draggable
-                    onDragStart={(e) => {
-                        if (e.dataTransfer) {
-                            e.dataTransfer.effectAllowed = "move";
-                            e.dataTransfer.setData("text/plain", String(song.id));
-                        }
-                        onDragStartCard?.(song.id);
-                    }}
-                    onDragEnter={(e) => {
-                        e.preventDefault();
-                        onDragEnterCard?.(song.id);
-                    }}
-                    onDragOver={(e) => {
-                        e.preventDefault();
-                    }}
-                    onDragEnd={() => {
-                        onDragEndCard?.();
-                    }}
-                    title="Drag to reorder track"
-                >
-                    ⋮⋮
+            {/* Header: handle + title, badge + zoom */}
+            <div
+                className="flex items-center justify-between gap-2 mb-1"
+                onDragEnter={(e) => {
+                    e.preventDefault();
+                    onDragEnterCard?.();
+                }}
+                onDragOver={(e) => {
+                    e.preventDefault();
+                }}
+            >
+                <div className="flex items-center gap-2 flex-1">
+                    {/* drag handle for card */}
+                    <div
+                        className="shrink-0 w-4 h-4 flex items-center justify-center text-neutral-500 cursor-grab active:cursor-grabbing select-none hover:text-neutral-300"
+                        title="Drag to reorder track"
+                        draggable
+                        onDragStart={(e) => {
+                            if (e.dataTransfer) {
+                                e.dataTransfer.effectAllowed = "move";
+                                e.dataTransfer.setData("text/plain", String(song.id));
+                            }
+                            onDragStartCard?.();
+                        }}
+                    >
+                        ⋮⋮
+                    </div>
+
+                    <EditableText
+                        text={song.title}
+                        onSubmit={(t) => onUpdate({ ...song, title: t })}
+                        className="font-bold leading-tight text-xl tracking-wider text-left"
+                    />
                 </div>
 
-                <EditableText
-                    text={song.title}
-                    onSubmit={(t) => onUpdate({ ...song, title: t })}
-                    className="font-bold leading-tight text-xl tracking-wider"
-                />
                 <div className="flex items-center gap-2">
                     {avg >= 100 ? (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-800 text-emerald-100 uppercase tracking-widest">
-              Done
+              FINAL
             </span>
                     ) : avg >= 75 ? (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-800 text-amber-100 uppercase tracking-widest">
-              Ready
+              Final
             </span>
                     ) : null}
 
@@ -640,6 +796,7 @@ function SongCard({
                 </div>
             </div>
 
+            {/* Track progress */}
             <div className="relative mb-2">
                 <ProgressBar value={avg} height="h-5" />
                 <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-sm">
@@ -647,6 +804,7 @@ function SongCard({
         </span>
             </div>
 
+            {/* Stage list */}
             <div className="flex-1 overflow-auto pr-1 pt-1">
                 <div className="flex flex-col gap-1">
                     {song.stages.map((stg, idx) => (
@@ -659,13 +817,13 @@ function SongCard({
                             draggingIndex={draggingIndex}
                             onDragStartRow={handleDragStartRow}
                             onDragEnterRow={handleDragEnterRow}
-                            onDragEndRow={handleDragEndRow}
                         />
                     ))}
                 </div>
             </div>
 
-            <div className="mt-2 flex items-center justify-between text-[11px]">
+            {/* Bottom toolbar: left = stage controls, right = card actions */}
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
                 <div className="flex items-center gap-1">
                     <button
                         className="px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-700 hover:bg-neutral-800"
@@ -679,14 +837,68 @@ function SongCard({
                     >
                         100%
                     </button>
+                    <button
+                        className="w-6 h-5 flex items-center justify-center text-sm rounded bg-neutral-800 hover:bg-neutral-700"
+                        onClick={addStage}
+                        title="Add bit"
+                    >
+                        +
+                    </button>
                 </div>
-                <button
-                    className="w-6 h-5 flex items-center justify-center text-sm rounded bg-neutral-800 hover:bg-neutral-700"
-                    onClick={addStage}
-                    title="Add bit"
-                >
-                    +
-                </button>
+
+                <div className="flex items-center gap-1">
+                    <button
+                        className={`px-1.5 py-0.5 rounded border text-[11px] ${
+                            canPasteTemplate
+                                ? "bg-neutral-900 border-emerald-700 text-emerald-100"
+                                : "bg-neutral-900 border-neutral-700 text-neutral-200"
+                        }`}
+                        onClick={() => onCopyTemplate?.(song.id)}
+                        title="Copy this track as a template"
+                    >
+                        Copy
+                    </button>
+
+                    <button
+                        className={`px-1.5 py-0.5 rounded border text-[11px] transition-colors ${
+                            canPasteTemplate
+                                ? "bg-emerald-900 border-emerald-600 text-emerald-100 hover:bg-emerald-800 hover:border-emerald-500"
+                                : "bg-neutral-950 border-neutral-800 text-neutral-600 cursor-not-allowed"
+                        }`}
+                        onClick={() => canPasteTemplate && onPasteTemplate?.(song.id)}
+                        disabled={!canPasteTemplate}
+                        title={
+                            canPasteTemplate
+                                ? "Paste template onto this track"
+                                : "Copy a track first"
+                        }
+                    >
+                        Paste
+                    </button>
+
+                    <button
+                        className="px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-700 hover:bg-neutral-800"
+                        onClick={() => onDuplicate?.(song.id)}
+                        title="Duplicate this track as a new card"
+                    >
+                        Dup
+                    </button>
+
+                    <button
+                        className="px-1.5 py-0.5 rounded bg-red-900 border border-red-800 hover:bg-red-800"
+                        onClick={() => {
+                            if (
+                                window.confirm(
+                                    "Delete this track from the album? You can undo this from the Undo button.",
+                                )
+                            ) {
+                                onDelete?.(song.id);
+                            }
+                        }}
+                    >
+                        Del
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -737,9 +949,15 @@ function SongDetail({ song, onUpdate, onBack }) {
         setDraggingIndex(index);
     };
 
-    const handleDragEndRow = () => {
-        setDraggingIndex(null);
-    };
+    useEffect(() => {
+        const clear = () => setDraggingIndex(null);
+        window.addEventListener("dragend", clear);
+        window.addEventListener("drop", clear);
+        return () => {
+            window.removeEventListener("dragend", clear);
+            window.removeEventListener("drop", clear);
+        };
+    }, []);
 
     return (
         <div className="h-screen w-screen bg-black flex items-center justify-center">
@@ -781,7 +999,6 @@ function SongDetail({ song, onUpdate, onBack }) {
                                 draggingIndex={draggingIndex}
                                 onDragStartRow={handleDragStartRow}
                                 onDragEnterRow={handleDragEnterRow}
-                                onDragEndRow={handleDragEndRow}
                             />
                         ))}
                     </div>
@@ -818,10 +1035,10 @@ function fromLocalDatetimeInputValue(value) {
 }
 
 export default function App() {
+    // ---- LocalStorage initial snapshot (fast startup / offline fallback) ----
     const stored = useMemo(() => {
-        if (typeof window === "undefined") return {};
         try {
-            return JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "{}");
+            return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
         } catch {
             return {};
         }
@@ -852,7 +1069,7 @@ export default function App() {
         () => stored.albumTitle || "Album Dashboard",
     );
     const [targetISO, setTargetISO] = useState(
-        () => stored.targetISO || new Date("2026-08-01T00:00:00").toISOString(),
+        () => stored.targetISO || DEFAULT_TARGET_ISO,
     );
 
     // How many tracks are actually on this album (just visibility/logic, not storage)
@@ -867,40 +1084,187 @@ export default function App() {
         return DEFAULT_SONGS.length;
     });
 
-    // Which song card (by id) is currently being dragged
-    const [draggingSongId, setDraggingSongId] = useState(null);
+    const [draggingSongIndex, setDraggingSongIndex] = useState(null);
+    const [backendLoaded, setBackendLoaded] = useState(false);
 
-    const handleSongDragStart = (songId) => {
-        setDraggingSongId(songId);
+    const [copiedTemplate, setCopiedTemplate] = useState(null); // array of stages or null
+    const [templateSourceTitle, setTemplateSourceTitle] = useState(null);
+
+    // ---- Hydrate from backend (SQLite) on mount ----
+    useEffect(() => {
+        let isMounted = true;
+
+        fetch("/api/state")
+            .then((res) => {
+                if (!res.ok) throw new Error("Non-OK response");
+                return res.json();
+            })
+            .then((data) => {
+                if (!isMounted || !data) return;
+
+                const migrated = migrateSongs(data.songs || DEFAULT_SONGS);
+                setSongs(migrated);
+                setAlbumTitle(data.albumTitle || "Album Dashboard");
+                setTargetISO(data.targetISO || DEFAULT_TARGET_ISO);
+
+                const savedCount = Number(data.songCount);
+                if (Number.isFinite(savedCount) && savedCount > 0) {
+                    setSongCount(savedCount);
+                } else {
+                    setSongCount(migrated.length || DEFAULT_SONGS.length);
+                }
+            })
+            .catch(() => {
+                // ignore; fallback to local snapshot / defaults
+            })
+            .finally(() => {
+                if (isMounted) setBackendLoaded(true);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
+    const handleSongDragStart = (index) => {
+        setDraggingSongIndex(index);
     };
 
-    const handleSongDragEnter = (overId) => {
-        if (!draggingSongId || draggingSongId === overId) return;
+    const handleSongDragEnter = (index) => {
+        if (draggingSongIndex === null || draggingSongIndex === index) return;
 
         setSongs((prevSongs) => {
             const updated = [...prevSongs];
 
-            const fromIndex = updated.findIndex((s) => s.id === draggingSongId);
-            const toIndex = updated.findIndex((s) => s.id === overId);
+            const from = draggingSongIndex;
+            const to = index;
 
-            if (fromIndex === -1 || toIndex === -1) {
-                return prevSongs;
-            }
-
-            // only reorder if both are in the visible range (0..songCount-1)
-            if (fromIndex >= songCount || toIndex >= songCount) {
-                return prevSongs;
-            }
-
-            const [moved] = updated.splice(fromIndex, 1);
-            updated.splice(toIndex, 0, moved);
+            const [moved] = updated.splice(from, 1);
+            updated.splice(to, 0, moved);
 
             return updated;
         });
+
+        setDraggingSongIndex(index);
     };
 
-    const handleSongDragEnd = () => {
-        setDraggingSongId(null);
+    useEffect(() => {
+        const clear = () => setDraggingSongIndex(null);
+        window.addEventListener("dragend", clear);
+        window.addEventListener("drop", clear);
+        return () => {
+            window.removeEventListener("dragend", clear);
+            window.removeEventListener("drop", clear);
+        };
+    }, []);
+
+    // --- Card copy / template helpers ---------------------------------------
+    const handleCopyTemplate = (songId) => {
+        const src = songs.find((s) => s.id === songId);
+        if (!src) return;
+
+        const templateStages = src.stages.map((stg) => ({
+            name: stg.name,
+            value: 0,
+        }));
+
+        setCopiedTemplate(templateStages);
+        setTemplateSourceTitle(src.title);  // remember which track we copied from
+    };
+
+    const handleClearTemplate = () => {
+        setCopiedTemplate(null);
+        setTemplateSourceTitle(null);
+    };
+
+    const handlePasteTemplate = (songId) => {
+        if (!copiedTemplate || !Array.isArray(copiedTemplate)) return;
+
+        setSongs((prev) =>
+            prev.map((s) =>
+                s.id === songId
+                    ? {
+                        ...s,
+                        // fresh copy of template stages
+                        stages: copiedTemplate.map((stg) => ({ ...stg })),
+                    }
+                    : s,
+            ),
+        );
+    };
+
+    const handleDuplicateSong = (songId) => {
+        setSongs((prev) => {
+            // Optional: hard cap at MAX_SONGS
+            if (prev.length >= MAX_SONGS) return prev;
+
+            const src = prev.find((s) => s.id === songId);
+            if (!src) return prev;
+
+            const nextId =
+                prev.reduce((max, s) => (s.id > max ? s.id : max), 0) + 1;
+
+            const clonedStages = src.stages.map((stg) => ({
+                name: stg.name,
+                value: 0, // or stg.value if you want to copy progress too
+            }));
+
+            const duplicated = {
+                ...src,
+                id: nextId,
+                title: `${src.title} (copy)`,
+                stages: clonedStages,
+            };
+
+            return [...prev, duplicated];
+        });
+
+        // Make sure the new card is actually visible
+        setSongCount((current) => {
+            const next = current + 1;
+            return next > MAX_SONGS ? MAX_SONGS : next;
+        });
+    };
+
+    const handleDeleteSong = (songId) => {
+        setSongs((prevSongs) => {
+            // Keep at least one song; if there’s only one, “delete” = reset it.
+            if (prevSongs.length <= 1) {
+                const only = prevSongs[0];
+                if (!only) {
+                    return [
+                        {
+                            id: 1,
+                            title: "Song 1",
+                            stages: DEFAULT_STAGE_NAMES.map((name) => ({
+                                name,
+                                value: 0,
+                            })),
+                        },
+                    ];
+                }
+
+                return [
+                    {
+                        ...only,
+                        title: "Song 1",
+                        stages: DEFAULT_STAGE_NAMES.map((name) => ({
+                            name,
+                            value: 0,
+                        })),
+                    },
+                ];
+            }
+
+            // Normal case: remove this song entirely
+            return prevSongs.filter((s) => s.id !== songId);
+        });
+
+        // Decrement album track count (useEffect will also clamp to songs.length)
+        setSongCount((current) => {
+            const next = current - 1;
+            return next < 1 ? 1 : next;
+        });
     };
 
     // Clamp songCount to the current songs length whenever songs change (e.g. import)
@@ -916,8 +1280,37 @@ export default function App() {
     const handleSongCountChange = (raw) => {
         const requested = Number(raw);
         if (!Number.isFinite(requested)) return;
-        const max = songs.length || 1;
-        const clamped = Math.min(max, Math.max(1, requested));
+
+        // Allow up to MAX_SONGS, but not below 1
+        const clamped = Math.min(MAX_SONGS, Math.max(1, requested));
+
+        setSongs((prevSongs) => {
+            let nextSongs = [...prevSongs];
+
+            // Ensure IDs stay unique when we add new songs
+            let nextId =
+                nextSongs.reduce((max, s) => (s.id > max ? s.id : max), 0) + 1;
+
+            if (nextSongs.length < clamped) {
+                // Need to ADD songs
+                while (nextSongs.length < clamped) {
+                    nextSongs.push({
+                        id: nextId++,
+                        title: `Song ${nextSongs.length + 1}`,
+                        stages: DEFAULT_STAGE_NAMES.map((name) => ({
+                            name,
+                            value: 0,
+                        })),
+                    });
+                }
+            } else if (nextSongs.length > clamped) {
+                // Need to REMOVE songs from the end
+                nextSongs = nextSongs.slice(0, clamped);
+            }
+
+            return nextSongs;
+        });
+
         setSongCount(clamped);
     };
 
@@ -940,26 +1333,84 @@ export default function App() {
         [songs, songCount],
     );
 
+    // ---- Persist to localStorage + backend whenever state changes ----
     useEffect(() => {
-        if (typeof window === "undefined") return;
-        window.localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify({ songs, targetISO, albumTitle, songCount }),
-        );
+        const snapshot = { songs, targetISO, albumTitle, songCount };
+
+        // localStorage backup
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+
+        // Debounced backend save
+        const controller = new AbortController();
+        const timeout = setTimeout(() => {
+            fetch("/api/state", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(snapshot),
+                signal: controller.signal,
+            }).catch(() => {
+                // swallow errors; localStorage still has a backup
+            });
+        }, 300);
+
+        return () => {
+            clearTimeout(timeout);
+            controller.abort();
+        };
     }, [songs, targetISO, albumTitle, songCount]);
+
+    const handleUndo = async () => {
+        try {
+            const res = await fetch("/api/undo", { method: "POST" });
+            if (!res.ok) {
+                let message = "Nothing to undo";
+                try {
+                    const data = await res.json();
+                    if (data && data.error) {
+                        message = data.error;
+                    }
+                } catch {
+                    // ignore JSON parse errors
+                }
+                alert(message);
+                return;
+            }
+
+            const data = await res.json();
+            if (!data) return;
+
+            const migrated = migrateSongs(data.songs || DEFAULT_SONGS);
+            setSongs(migrated);
+            setAlbumTitle(data.albumTitle || "Album Dashboard");
+            setTargetISO(data.targetISO || DEFAULT_TARGET_ISO);
+
+            const savedCount = Number(data.songCount);
+            if (Number.isFinite(savedCount) && savedCount > 0) {
+                setSongCount(savedCount);
+            } else {
+                setSongCount(migrated.length || DEFAULT_SONGS.length);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Failed to undo");
+        }
+    };
 
     const updateSong = (updated) =>
         setSongs((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
 
     useEffect(() => {
-        if (typeof document === "undefined") return;
-        const trimmed = albumTitle?.trim();
-        if (trimmed) {
-            document.title = `${trimmed} Planning`;
-        } else {
-            document.title = "Album Dashboard";
-        }
+        document.title = albumTitle + " " + "Planning" || "Album Dashboard";
     }, [albumTitle]);
+
+    if (!backendLoaded) {
+        // Optional: quick loading state while we attempt to hydrate from backend
+        return (
+            <div className="min-h-screen w-full bg-neutral-950 text-neutral-100 flex items-center justify-center">
+                <div className="text-sm text-neutral-400">Loading dashboard…</div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen w-full bg-neutral-950 text-neutral-100 overflow-x-auto">
@@ -967,11 +1418,7 @@ export default function App() {
                 <SongDetail
                     song={currentSong}
                     onUpdate={updateSong}
-                    onBack={() => {
-                        if (typeof window !== "undefined") {
-                            window.location.hash = "";
-                        }
-                    }}
+                    onBack={() => (window.location.hash = "")}
                 />
             ) : (
                 <>
@@ -982,6 +1429,11 @@ export default function App() {
                         albumTitle={albumTitle}
                         setAlbumTitle={setAlbumTitle}
                         albumSize={songCount}
+                        songCount={songCount}
+                        onUndo={handleUndo}
+                        hasTemplate={!!copiedTemplate}
+                        templateSourceTitle={templateSourceTitle}   // <-- here
+                        onClearTemplate={handleClearTemplate}
                     />
 
                     {/* Album-wide overall progress (with % in center) */}
@@ -990,7 +1442,7 @@ export default function App() {
                         <span
                             className="absolute inset-0 text-white font-bold"
                             style={{
-                                lineHeight: "36px", // match h-9 (36px)
+                                lineHeight: "36px",
                                 textAlign: "center",
                             }}
                         >
@@ -1004,7 +1456,7 @@ export default function App() {
                             <input
                                 type="number"
                                 min={1}
-                                max={songs.length}
+                                max={MAX_SONGS}
                                 value={songCount}
                                 onChange={(e) => handleSongCountChange(e.target.value)}
                                 className="w-16 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs"
@@ -1014,20 +1466,20 @@ export default function App() {
 
                     <div className="px-4 pb-4 h-[calc(100vh-140px)] overflow-auto">
                         <div className="grid gap-3 justify-items-stretch xl:grid-cols-5 lg:grid-cols-4 md:grid-cols-3 sm:grid-cols-2 grid-cols-1">
-                            {visibleSongs.map((song) => (
+                            {visibleSongs.map((song, index) => (
                                 <SongCard
                                     key={song.id}
                                     song={song}
                                     onUpdate={updateSong}
-                                    onZoom={(id) => {
-                                        if (typeof window !== "undefined") {
-                                            window.location.hash = `#song/${id}`;
-                                        }
-                                    }}
-                                    onDragStartCard={handleSongDragStart}
-                                    onDragEnterCard={handleSongDragEnter}
-                                    onDragEndCard={handleSongDragEnd}
-                                    isDragging={draggingSongId === song.id}
+                                    onZoom={(id) => (window.location.hash = `#song/${id}`)}
+                                    onDragStartCard={() => handleSongDragStart(index)}
+                                    onDragEnterCard={() => handleSongDragEnter(index)}
+                                    isDragging={draggingSongIndex === index}
+                                    onCopyTemplate={handleCopyTemplate}
+                                    onPasteTemplate={handlePasteTemplate}
+                                    canPasteTemplate={!!copiedTemplate}
+                                    onDuplicate={handleDuplicateSong}
+                                    onDelete={handleDeleteSong}
                                 />
                             ))}
                         </div>
