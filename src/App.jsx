@@ -219,9 +219,18 @@ function EditStagePrompt({ initialName, initialValue, onClose }) {
     return createPortal(content, document.body);
 }
 
-function ExportImport({ songs, albumTitle }) {
+function ExportImport({ songs, albumTitle, targetISO, songCount, onUndo }) {
     const exportJSON = async () => {
-        const data = JSON.stringify({ songs, albumTitle }, null, 2);
+        const data = JSON.stringify(
+            {
+                songs,
+                albumTitle,
+                targetISO,
+                songCount,
+            },
+            null,
+            2,
+        );
 
         if ("showSaveFilePicker" in window) {
             try {
@@ -239,7 +248,7 @@ function ExportImport({ songs, albumTitle }) {
                 if (e?.name === "AbortError") return;
                 console.error(e);
                 alert(
-                    "Could not save using the file picker. Falling back to download.",
+                    "Could not save using the File System Access API; falling back to download.",
                 );
             }
         }
@@ -251,6 +260,37 @@ function ExportImport({ songs, albumTitle }) {
         a.download = "album_dashboard.json";
         a.click();
         URL.revokeObjectURL(url);
+    };
+
+    const buildSnapshotFromData = (data) => {
+        const importedSongs =
+            Array.isArray(data.songs) && data.songs.length ? data.songs : songs;
+
+        const importedTitle =
+            typeof data.albumTitle === "string" && data.albumTitle.trim().length
+                ? data.albumTitle
+                : albumTitle;
+
+        const importedTargetISO =
+            typeof data.targetISO === "string" && data.targetISO
+                ? data.targetISO
+                : targetISO;
+
+        let importedSongCount = Number(data.songCount);
+        if (!Number.isFinite(importedSongCount) || importedSongCount <= 0) {
+            if (Array.isArray(data.songs) && data.songs.length) {
+                importedSongCount = data.songs.length;
+            } else {
+                importedSongCount = songCount || songs.length || DEFAULT_SONGS.length;
+            }
+        }
+
+        return {
+            songs: importedSongs,
+            albumTitle: importedTitle,
+            targetISO: importedTargetISO,
+            songCount: importedSongCount,
+        };
     };
 
     const importJSON = async () => {
@@ -265,13 +305,28 @@ function ExportImport({ songs, albumTitle }) {
                 const file = await handle.getFile();
                 const txt = await file.text();
                 const data = JSON.parse(txt);
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+                const snapshot = buildSnapshotFromData(data);
+
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+                try {
+                    await fetch("/api/state", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(snapshot),
+                    });
+                } catch (err) {
+                    console.error(err);
+                }
+
                 window.location.reload();
                 return;
             } catch (e) {
                 if (e?.name === "AbortError") return;
                 console.error(e);
-                alert("Could not open using the file picker. Falling back to upload.");
+                alert(
+                    "Could not open using the File System Access API; falling back to file input.",
+                );
             }
         }
 
@@ -281,10 +336,22 @@ function ExportImport({ songs, albumTitle }) {
         input.onchange = () => {
             const file = input.files?.[0];
             if (!file) return;
-            file.text().then((txt) => {
+            file.text().then(async (txt) => {
                 try {
                     const data = JSON.parse(txt);
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+                    const snapshot = buildSnapshotFromData(data);
+
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+                    try {
+                        await fetch("/api/state", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(snapshot),
+                        });
+                    } catch (err) {
+                        console.error(err);
+                    }
+
                     window.location.reload();
                 } catch {
                     alert("Invalid JSON file");
@@ -294,12 +361,33 @@ function ExportImport({ songs, albumTitle }) {
         input.click();
     };
 
-    const resetData = () => {
-        if (confirm("Reset all data to defaults?")) {
-            localStorage.removeItem(STORAGE_KEY);
-            window.location.reload();
+    const resetData = async () => {
+        if (!confirm("Reset all data to defaults?")) return;
+
+        const snapshot = {
+            songs: DEFAULT_SONGS,
+            albumTitle: "Album Dashboard",
+            targetISO: DEFAULT_TARGET_ISO,
+            songCount: DEFAULT_SONGS.length,
+        };
+
+        localStorage.removeItem(STORAGE_KEY);
+
+        try {
+            await fetch("/api/state", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(snapshot),
+            });
+        } catch (err) {
+            console.error(err);
+            // If backend is unavailable, keep defaults in localStorage so the app can still load.
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
         }
+
+        window.location.reload();
     };
+
     return (
         <div className="flex items-center gap-2">
             <button
@@ -320,6 +408,14 @@ function ExportImport({ songs, albumTitle }) {
             >
                 Reset
             </button>
+            {onUndo && (
+                <button
+                    className="px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700"
+                    onClick={onUndo}
+                >
+                    Undo
+                </button>
+            )}
         </div>
     );
 }
@@ -348,6 +444,8 @@ function Header({
                     setAlbumTitle,
                     albumSize,
                     readyThreshold = 75,
+                    songCount,
+                    onUndo,
                 }) {
     const { days, hours, minutes, seconds } = useCountdown(targetISO);
     const [editingDate, setEditingDate] = useState(false);
@@ -403,7 +501,13 @@ function Header({
                         </div>
                     </div>
                 )}
-                <ExportImport songs={songs} albumTitle={albumTitle} />
+                <ExportImport
+                    songs={songs}
+                    albumTitle={albumTitle}
+                    targetISO={targetISO}
+                    songCount={songCount}
+                    onUndo={onUndo}
+                />
             </div>
         </div>
     );
@@ -616,12 +720,12 @@ function SongCard({
                 <div className="flex items-center gap-2">
                     {avg >= 100 ? (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-800 text-emerald-100 uppercase tracking-widest">
-        Done
-      </span>
+              Done
+            </span>
                     ) : avg >= 75 ? (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-800 text-amber-100 uppercase tracking-widest">
-        Ready
-      </span>
+              Ready
+            </span>
                     ) : null}
 
                     <button
@@ -999,6 +1103,43 @@ export default function App() {
         };
     }, [songs, targetISO, albumTitle, songCount]);
 
+    const handleUndo = async () => {
+        try {
+            const res = await fetch("/api/undo", { method: "POST" });
+            if (!res.ok) {
+                let message = "Nothing to undo";
+                try {
+                    const data = await res.json();
+                    if (data && data.error) {
+                        message = data.error;
+                    }
+                } catch {
+                    // ignore JSON parse errors
+                }
+                alert(message);
+                return;
+            }
+
+            const data = await res.json();
+            if (!data) return;
+
+            const migrated = migrateSongs(data.songs || DEFAULT_SONGS);
+            setSongs(migrated);
+            setAlbumTitle(data.albumTitle || "Album Dashboard");
+            setTargetISO(data.targetISO || DEFAULT_TARGET_ISO);
+
+            const savedCount = Number(data.songCount);
+            if (Number.isFinite(savedCount) && savedCount > 0) {
+                setSongCount(savedCount);
+            } else {
+                setSongCount(migrated.length || DEFAULT_SONGS.length);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Failed to undo");
+        }
+    };
+
     const updateSong = (updated) =>
         setSongs((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
 
@@ -1032,6 +1173,8 @@ export default function App() {
                         albumTitle={albumTitle}
                         setAlbumTitle={setAlbumTitle}
                         albumSize={songCount}
+                        songCount={songCount}
+                        onUndo={handleUndo}
                     />
 
                     {/* Album-wide overall progress (with % in center) */}

@@ -398,6 +398,37 @@ app.post("/api/state", (req, res) => {
     }
 });
 
+// POST /api/undo -> revert current project to previous snapshot
+app.post("/api/undo", (req, res) => {
+    try {
+        const currentId = getCurrentProjectIdOrNull();
+        if (!currentId) {
+            return res.status(400).json({ error: "No current project to undo" });
+        }
+
+        const previousSnapshot = loadPreviousHistorySnapshot(currentId);
+        if (!previousSnapshot) {
+            return res
+                .status(409)
+                .json({ error: "No previous snapshot available to undo" });
+        }
+
+        saveSnapshotTx(
+            currentId,
+            previousSnapshot,
+            false,
+            "api-undo",
+            "Undo to previous history snapshot"
+        );
+
+        const snapshot = loadSnapshotForProject(currentId);
+        return res.json(snapshot);
+    } catch (err) {
+        console.error("Error performing undo:", err);
+        return res.status(500).json({ error: "Failed to undo" });
+    }
+});
+
 // List all projects (for future project picker UI)
 app.get("/api/projects", (req, res) => {
     try {
@@ -528,3 +559,28 @@ app.get("/api/health", (req, res) => {
 app.listen(PORT, () => {
     console.log(`API server listening on http://localhost:${PORT}`);
 });
+
+function loadPreviousHistorySnapshot(projectId) {
+    if (!projectId) return null;
+
+    const row = db
+        .prepare(
+            `
+                SELECT snapshot
+                FROM project_history
+                WHERE project_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1 OFFSET 1
+            `
+        )
+        .get(projectId);
+
+    if (!row || !row.snapshot) return null;
+
+    try {
+        return JSON.parse(row.snapshot);
+    } catch (err) {
+        console.error("Failed to parse history snapshot JSON:", err);
+        return null;
+    }
+}
