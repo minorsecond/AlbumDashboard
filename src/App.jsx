@@ -684,14 +684,6 @@ function SongCard({
         >
             <div
                 className="flex items-center justify-between gap-2 mb-1"
-                draggable
-                onDragStart={(e) => {
-                    if (e.dataTransfer) {
-                        e.dataTransfer.effectAllowed = "move";
-                        e.dataTransfer.setData("text/plain", String(song.id));
-                    }
-                    onDragStartCard?.();
-                }}
                 onDragEnter={(e) => {
                     e.preventDefault();
                     onDragEnterCard?.();
@@ -700,12 +692,19 @@ function SongCard({
                     e.preventDefault();
                 }}
             >
-                <div className="flex items-center gap-2">
-                    {/* visual handle only; header is still the drag target */}
+                <div className="flex items-center gap-2 flex-1">
+                    {/* drag handle */}
                     <div
-                        className="shrink-0 w-4 h-4 flex items-center justify-center text-neutral-500
-                 cursor-grab active:cursor-grabbing select-none hover:text-neutral-300"
+                        className="shrink-0 w-4 h-4 flex items-center justify-center text-neutral-500 cursor-grab active:cursor-grabbing select-none hover:text-neutral-300"
                         title="Drag to reorder track"
+                        draggable
+                        onDragStart={(e) => {
+                            if (e.dataTransfer) {
+                                e.dataTransfer.effectAllowed = "move";
+                                e.dataTransfer.setData("text/plain", String(song.id));
+                            }
+                            onDragStartCard?.();
+                        }}
                     >
                         ⋮⋮
                     </div>
@@ -713,19 +712,19 @@ function SongCard({
                     <EditableText
                         text={song.title}
                         onSubmit={(t) => onUpdate({ ...song, title: t })}
-                        className="font-bold leading-tight text-xl tracking-wider"
+                        className="font-bold leading-tight text-xl tracking-wider text-left"
                     />
                 </div>
 
                 <div className="flex items-center gap-2">
                     {avg >= 100 ? (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-800 text-emerald-100 uppercase tracking-widest">
-              Done
-            </span>
+                            Done
+                        </span>
                     ) : avg >= 75 ? (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-800 text-amber-100 uppercase tracking-widest">
-              Ready
-            </span>
+                            FINAL
+                        </span>
                     ) : null}
 
                     <button
