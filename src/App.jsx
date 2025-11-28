@@ -454,17 +454,8 @@ function Header({
     const [editingDate, setEditingDate] = useState(false);
 
     return (
-        <div
-            className="
-        w-full
-        grid gap-4 p-4
-        items-start lg:items-center
-        grid-cols-1
-        lg:grid-cols-[minmax(0,1.5fr)_auto_minmax(0,260px)_minmax(0,1.7fr)]
-        /*                ^^^^^^^^^^^^^^ column 3 has fixed max width */
-      "
-        >
-            {/* Col 1: Album title */}
+        <div className="w-full flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 p-4">
+            {/* Left: album title */}
             <div className="flex items-center gap-4">
                 <EditableText
                     text={albumTitle}
@@ -474,36 +465,59 @@ function Header({
                 />
             </div>
 
-            {/* Col 2: 1/9 widget */}
-            <div className="flex flex-col items-center">
-                <div className="text-2xl font-black tracking-wider tabular-nums">
-                    {eligibleCount(songs, readyThreshold)}/{albumSize}
-                </div>
-                <div className="text-[10px] uppercase tracking-widest text-neutral-500">
-                    Tracks ≥ {readyThreshold}% done
+            {/* Middle: 1/9 widget + template pill (pill sits to the right of 1/9) */}
+            <div className="flex justify-center w-full lg:w-[320px]">
+                <div className="flex flex-col items-center gap-1">
+                    <div className="flex items-center gap-2">
+                        {/* 1/9 widget */}
+                        <div className="flex flex-col items-center">
+                            <div className="text-2xl font-black tracking-wider tabular-nums">
+                                {eligibleCount(songs, readyThreshold)}/{albumSize}
+                            </div>
+                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+                                Tracks ≥ {readyThreshold}% done
+                            </div>
+                        </div>
+
+                        {/* Desktop / tablet: pill in same row as 1/9 */}
+                        {hasTemplate && (
+                            <button
+                                className="
+                  hidden md:inline-flex
+                  px-3 py-1.5 rounded-full
+                  text-[10px] uppercase tracking-widest
+                  bg-emerald-900/40 border border-emerald-600 text-emerald-100
+                  max-w-[180px] truncate
+                "
+                                onClick={onClearTemplate}
+                                title="Clear copied track template (disables Paste)"
+                            >
+                                Template: {templateSourceTitle || "Copied"} ✕
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Small screens: pill on its own row so it doesn't cram things */}
+                    {hasTemplate && (
+                        <button
+                            className="
+                md:hidden
+                px-3 py-1.5 rounded-full
+                text-[10px] uppercase tracking-widest
+                bg-emerald-900/40 border border-emerald-600 text-emerald-100
+                max-w-full truncate
+              "
+                            onClick={onClearTemplate}
+                            title="Clear copied track template (disables Paste)"
+                        >
+                            Template: {templateSourceTitle || "Copied"} ✕
+                        </button>
+                    )}
                 </div>
             </div>
 
-            {/* Col 3: template pill slot (column width fixed, pill stretches up to 260px) */}
-            <div className="flex justify-center">
-                {hasTemplate && (
-                    <button
-                        className="
-              px-3 py-1.5 rounded-full
-              text-[10px] uppercase tracking-widest
-              bg-emerald-900/40 border border-emerald-600 text-emerald-100
-              max-w-full truncate
-            "
-                        onClick={onClearTemplate}
-                        title="Clear copied track template (disables Paste)"
-                    >
-                        Template: {templateSourceTitle || "Copied"} ✕
-                    </button>
-                )}
-            </div>
-
-            {/* Col 4: countdown + export/import/reset/undo */}
-            <div className="flex items-center justify-end gap-3 text-right">
+            {/* Right: countdown + Export/Import/Reset/Undo */}
+            <div className="flex items-center gap-3 text-right w-full lg:w-[420px] justify-end">
                 {editingDate ? (
                     <input
                         type="datetime-local"
@@ -521,16 +535,21 @@ function Header({
                         onClick={() => setEditingDate(true)}
                         title="Click to edit target deadline"
                     >
-                        <div className="uppercase text-xs tracking-widest text-neutral-400">
-                            Time to Goal
-                        </div>
-                        <div className="text-2xl tabular-nums font-semibold">
-                            {days}d {String(hours).padStart(2, "0")}:
-                            {String(minutes).padStart(2, "0")}:
-                            {String(seconds).padStart(2, "0")}
-                        </div>
-                        <div className="text-xs text-neutral-500">
-                            Target: {new Date(targetISO).toLocaleString()}
+                        <div className="flex flex-col items-end leading-tight">
+                            <div className="uppercase text-[10px] tracking-widest text-neutral-400 mb-0.5">
+                                Time to Goal
+                            </div>
+
+                            {/* Single-line time, no wrapping */}
+                            <div className="text-lg md:text-xl lg:text-2xl tabular-nums font-semibold whitespace-nowrap">
+                                {days}d {String(hours).padStart(2, "0")}:
+                                {String(minutes).padStart(2, "0")}:
+                                {String(seconds).padStart(2, "0")}
+                            </div>
+
+                            <div className="text-[10px] text-neutral-500 mt-0.5">
+                                Target: {new Date(targetISO).toLocaleString()}
+                            </div>
                         </div>
                     </div>
                 )}
