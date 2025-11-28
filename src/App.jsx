@@ -600,6 +600,10 @@ function SongCard({
                       onDragStartCard,
                       onDragEnterCard,
                       isDragging,
+                      onCopyTemplate,
+                      onPasteTemplate,
+                      canPasteTemplate,
+                      onDuplicate,
                   }) {
     const avg = songAverage(song);
 
@@ -693,7 +697,7 @@ function SongCard({
                 }}
             >
                 <div className="flex items-center gap-2 flex-1">
-                    {/* drag handle */}
+                    {/* drag handle for card */}
                     <div
                         className="shrink-0 w-4 h-4 flex items-center justify-center text-neutral-500 cursor-grab active:cursor-grabbing select-none hover:text-neutral-300"
                         title="Drag to reorder track"
@@ -723,9 +727,47 @@ function SongCard({
                         </span>
                     ) : avg >= 75 ? (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-800 text-amber-100 uppercase tracking-widest">
-                            FINAL
+                            Final
                         </span>
                     ) : null}
+
+                    {/* Copy current card as template (stages, 0% progress) */}
+                    <button
+                        className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
+                        onClick={() => onCopyTemplate?.(song.id)}
+                        title="Copy this track as a template"
+                    >
+                        Copy
+                    </button>
+
+                    {/* Paste template onto this card */}
+                    <button
+                        className={`text-xs px-2 py-1 rounded ${
+                            canPasteTemplate
+                                ? "bg-neutral-800 hover:bg-neutral-700"
+                                : "bg-neutral-900 text-neutral-600 cursor-not-allowed"
+                        }`}
+                        onClick={() =>
+                            canPasteTemplate && onPasteTemplate?.(song.id)
+                        }
+                        disabled={!canPasteTemplate}
+                        title={
+                            canPasteTemplate
+                                ? "Paste template onto this track"
+                                : "Copy a track first"
+                        }
+                    >
+                        Paste
+                    </button>
+
+                    {/* Duplicate this card as a new track */}
+                    <button
+                        className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
+                        onClick={() => onDuplicate?.(song.id)}
+                        title="Duplicate this track as a new card"
+                    >
+                        Dup
+                    </button>
 
                     <button
                         className="text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700"
@@ -971,6 +1013,8 @@ export default function App() {
     const [draggingSongIndex, setDraggingSongIndex] = useState(null);
     const [backendLoaded, setBackendLoaded] = useState(false);
 
+    const [copiedTemplate, setCopiedTemplate] = useState(null); // array of stages or null
+
     // ---- Hydrate from backend (SQLite) on mount ----
     useEffect(() => {
         let isMounted = true;
@@ -1039,6 +1083,69 @@ export default function App() {
         };
     }, []);
 
+    // --- Card copy / template helpers ---------------------------------------
+    const handleCopyTemplate = (songId) => {
+        const src = songs.find((s) => s.id === songId);
+        if (!src) return;
+
+        // Treat stages as a template: keep names, reset progress to 0.
+        const templateStages = src.stages.map((stg) => ({
+            name: stg.name,
+            value: 0,
+        }));
+        setCopiedTemplate(templateStages);
+    };
+
+    const handlePasteTemplate = (songId) => {
+        if (!copiedTemplate || !Array.isArray(copiedTemplate)) return;
+
+        setSongs((prev) =>
+            prev.map((s) =>
+                s.id === songId
+                    ? {
+                        ...s,
+                        // fresh copy of template stages
+                        stages: copiedTemplate.map((stg) => ({ ...stg })),
+                    }
+                    : s,
+            ),
+        );
+    };
+
+    const handleDuplicateSong = (songId) => {
+        setSongs((prev) => {
+            // Optional: hard cap at MAX_SONGS
+            if (prev.length >= MAX_SONGS) return prev;
+
+            const src = prev.find((s) => s.id === songId);
+            if (!src) return prev;
+
+            const nextId =
+                prev.reduce((max, s) => (s.id > max ? s.id : max), 0) + 1;
+
+            const clonedStages = src.stages.map((stg) => ({
+                name: stg.name,
+                value: 0, // or stg.value if you want to copy progress too
+            }));
+
+            const duplicated = {
+                ...src,
+                id: nextId,
+                title: `${src.title} (copy)`,
+                stages: clonedStages,
+            };
+
+            return [...prev, duplicated];
+        });
+
+        // Make sure the new card is actually visible
+        setSongCount((current) => {
+            const next = current + 1;
+            return next > MAX_SONGS ? MAX_SONGS : next;
+        });
+    };
+
+
     // Clamp songCount to the current songs length whenever songs change (e.g. import)
     useEffect(() => {
         setSongCount((current) => {
@@ -1052,8 +1159,37 @@ export default function App() {
     const handleSongCountChange = (raw) => {
         const requested = Number(raw);
         if (!Number.isFinite(requested)) return;
-        const max = songs.length || 1;
-        const clamped = Math.min(max, Math.max(1, requested));
+
+        // Allow up to MAX_SONGS, but not below 1
+        const clamped = Math.min(MAX_SONGS, Math.max(1, requested));
+
+        setSongs((prevSongs) => {
+            let nextSongs = [...prevSongs];
+
+            // Ensure IDs stay unique when we add new songs
+            let nextId =
+                nextSongs.reduce((max, s) => (s.id > max ? s.id : max), 0) + 1;
+
+            if (nextSongs.length < clamped) {
+                // Need to ADD songs
+                while (nextSongs.length < clamped) {
+                    nextSongs.push({
+                        id: nextId++,
+                        title: `Song ${nextSongs.length + 1}`,
+                        stages: DEFAULT_STAGE_NAMES.map((name) => ({
+                            name,
+                            value: 0,
+                        })),
+                    });
+                }
+            } else if (nextSongs.length > clamped) {
+                // Need to REMOVE songs from the end
+                nextSongs = nextSongs.slice(0, clamped);
+            }
+
+            return nextSongs;
+        });
+
         setSongCount(clamped);
     };
 
@@ -1196,7 +1332,7 @@ export default function App() {
                             <input
                                 type="number"
                                 min={1}
-                                max={songs.length}
+                                max={MAX_SONGS}
                                 value={songCount}
                                 onChange={(e) => handleSongCountChange(e.target.value)}
                                 className="w-16 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs"
@@ -1215,6 +1351,10 @@ export default function App() {
                                     onDragStartCard={() => handleSongDragStart(index)}
                                     onDragEnterCard={() => handleSongDragEnter(index)}
                                     isDragging={draggingSongIndex === index}
+                                    onCopyTemplate={handleCopyTemplate}
+                                    onPasteTemplate={handlePasteTemplate}
+                                    canPasteTemplate={!!copiedTemplate}
+                                    onDuplicate={handleDuplicateSong}
                                 />
                             ))}
                         </div>
