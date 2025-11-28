@@ -454,50 +454,97 @@ function Header({
     const [editingDate, setEditingDate] = useState(false);
 
     return (
-        <div className="w-full flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 p-4">
-            {/* Left: album title */}
-            <div className="flex items-center gap-4">
-                <EditableText
-                    text={albumTitle}
-                    onSubmit={setAlbumTitle}
-                    className="text-2xl font-black tracking-wider"
-                    placeholder="Album Title"
-                />
-            </div>
+        <div className="relative w-full px-4 pt-4 pb-4">
+            {/* Top row: left + right; center widget is overlaid separately */}
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                {/* Left: album title */}
+                <div className="flex items-center gap-4">
+                    <EditableText
+                        text={albumTitle}
+                        onSubmit={setAlbumTitle}
+                        className="text-2xl font-black tracking-wider"
+                        placeholder="Album Title"
+                    />
+                </div>
 
-            {/* Middle: 1/9 widget + template pill (pill sits to the right of 1/9) */}
-            <div className="flex justify-center w-full lg:w-[320px]">
-                <div className="flex flex-col items-center gap-1">
-                    <div className="flex items-center gap-2">
-                        {/* 1/9 widget */}
-                        <div className="flex flex-col items-center">
-                            <div className="text-2xl font-black tracking-wider tabular-nums">
-                                {eligibleCount(songs, readyThreshold)}/{albumSize}
-                            </div>
-                            <div className="text-[10px] uppercase tracking-widest text-neutral-500">
-                                Tracks ≥ {readyThreshold}% done
+                {/* Right: countdown + Export/Import/Reset/Undo */}
+                <div className="flex items-center gap-3 text-right w-full lg:w-auto justify-end">
+                    {editingDate ? (
+                        <input
+                            type="datetime-local"
+                            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1"
+                            value={toLocalDatetimeInputValue(targetISO)}
+                            onChange={(e) =>
+                                setTargetISO(fromLocalDatetimeInputValue(e.target.value))
+                            }
+                            onBlur={() => setEditingDate(false)}
+                            autoFocus
+                        />
+                    ) : (
+                        <div
+                            className="cursor-pointer"
+                            onClick={() => setEditingDate(true)}
+                            title="Click to edit target deadline"
+                        >
+                            <div className="flex flex-col items-end leading-tight">
+                                <div className="uppercase text-[10px] tracking-widest text-neutral-400 mb-0.5">
+                                    Time to Goal
+                                </div>
+                                <div className="text-lg md:text-xl lg:text-2xl tabular-nums font-semibold whitespace-nowrap">
+                                    {days}d {String(hours).padStart(2, "0")}:
+                                    {String(minutes).padStart(2, "0")}:
+                                    {String(seconds).padStart(2, "0")}
+                                </div>
+                                <div className="text-[10px] text-neutral-500 mt-0.5">
+                                    Target: {new Date(targetISO).toLocaleString()}
+                                </div>
                             </div>
                         </div>
+                    )}
 
-                        {/* Desktop / tablet: pill in same row as 1/9 */}
+                    <ExportImport
+                        songs={songs}
+                        albumTitle={albumTitle}
+                        targetISO={targetISO}
+                        songCount={songCount}
+                        onUndo={onUndo}
+                    />
+                </div>
+            </div>
+
+            {/* Center widget: 1/9 + template pill */}
+            {/* On small screens this sits in normal flow; on lg it's overlaid and doesn't move other widgets */}
+            <div className="mt-3 flex justify-center lg:mt-0 lg:absolute lg:inset-x-0 lg:top-1/2 lg:-translate-y-1/2 pointer-events-none">
+                <div className="flex flex-col items-center gap-1 pointer-events-auto">
+                    {/* 1/9 block is the centering anchor */}
+                    <div className="relative flex flex-col items-center">
+                        <div className="text-2xl font-black tracking-wider tabular-nums">
+                            {eligibleCount(songs, readyThreshold)}/{albumSize}
+                        </div>
+                        <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+                            Tracks ≥ {readyThreshold}% done
+                        </div>
+
+                        {/* Desktop/tablet pill: absolutely positioned to the right of 1/9 so 1/9 never moves */}
                         {hasTemplate && (
                             <button
                                 className="
                   hidden md:inline-flex
+                  absolute left-full ml-3 top-1/2 -translate-y-1/2
                   px-3 py-1.5 rounded-full
                   text-[10px] uppercase tracking-widest
                   bg-emerald-900/40 border border-emerald-600 text-emerald-100
-                  max-w-[180px] truncate
+                  max-w-[220px] truncate
                 "
                                 onClick={onClearTemplate}
                                 title="Clear copied track template (disables Paste)"
                             >
-                                Template: {templateSourceTitle || "Copied"} ✕
+                                Template: {templateSourceTitle || 'Copied'} ✕
                             </button>
                         )}
                     </div>
 
-                    {/* Small screens: pill on its own row so it doesn't cram things */}
+                    {/* Mobile pill: stacked underneath, not absolute */}
                     {hasTemplate && (
                         <button
                             className="
@@ -510,57 +557,10 @@ function Header({
                             onClick={onClearTemplate}
                             title="Clear copied track template (disables Paste)"
                         >
-                            Template: {templateSourceTitle || "Copied"} ✕
+                            Template: {templateSourceTitle || 'Copied'} ✕
                         </button>
                     )}
                 </div>
-            </div>
-
-            {/* Right: countdown + Export/Import/Reset/Undo */}
-            <div className="flex items-center gap-3 text-right w-full lg:w-[420px] justify-end">
-                {editingDate ? (
-                    <input
-                        type="datetime-local"
-                        className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1"
-                        value={toLocalDatetimeInputValue(targetISO)}
-                        onChange={(e) =>
-                            setTargetISO(fromLocalDatetimeInputValue(e.target.value))
-                        }
-                        onBlur={() => setEditingDate(false)}
-                        autoFocus
-                    />
-                ) : (
-                    <div
-                        className="cursor-pointer"
-                        onClick={() => setEditingDate(true)}
-                        title="Click to edit target deadline"
-                    >
-                        <div className="flex flex-col items-end leading-tight">
-                            <div className="uppercase text-[10px] tracking-widest text-neutral-400 mb-0.5">
-                                Time to Goal
-                            </div>
-
-                            {/* Single-line time, no wrapping */}
-                            <div className="text-lg md:text-xl lg:text-2xl tabular-nums font-semibold whitespace-nowrap">
-                                {days}d {String(hours).padStart(2, "0")}:
-                                {String(minutes).padStart(2, "0")}:
-                                {String(seconds).padStart(2, "0")}
-                            </div>
-
-                            <div className="text-[10px] text-neutral-500 mt-0.5">
-                                Target: {new Date(targetISO).toLocaleString()}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                <ExportImport
-                    songs={songs}
-                    albumTitle={albumTitle}
-                    targetISO={targetISO}
-                    songCount={songCount}
-                    onUndo={onUndo}
-                />
             </div>
         </div>
     );
